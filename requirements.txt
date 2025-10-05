@@ -1,0 +1,2 @@
+textual>=0.52.1
+pyperclip>=1.8.2
