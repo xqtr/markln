@@ -87,6 +87,16 @@ Keyboard shortcuts:
 - PyperClip
 
 
+### SHOWCASE
+
+![dual panel](https://cp737.net/files/markln/markln-main.png)
+
+![open dialog](https://cp737.net/files/markln/markln-open.png)
+
+![live preview](https://cp737.net/files/markln/markln-preview.png)
+
+![tags list](https://cp737.net/files/markln/markln-tags.png)
+
 ### LICENSE
 GPL-3.0-or-later
 
@@ -94,3 +104,4 @@ GPL-3.0-or-later
 For issues and questions, please check the issues page or create a new issue with detailed description.
 
 This editor is designed for developers who prefer working in the terminal and need a quick, efficient way to edit markdown files with instant visual feedback.
+
