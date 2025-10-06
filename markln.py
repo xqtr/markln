@@ -884,7 +884,7 @@ class MDEditor(App[None]):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Horizontal(id="ui"):
-            yield TextArea(id="editor", tab_behavior="indent")
+            yield TextArea(id="editor", tab_behavior="indent", language="markdown")
             yield Markdown(id="preview")
         # Hidden fullscreen viewer overlay
         yield MarkdownViewer(id="preview_viewer", show_table_of_contents=True, classes="hidden")
@@ -903,6 +903,7 @@ class MDEditor(App[None]):
         editor = self.query_one("#editor", TextArea)
         editor.indent_type = "spaces"
         editor.indent_width = 2
+        
         editor.focus()
         self._original_content = editor.text
                
