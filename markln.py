@@ -6,6 +6,7 @@ import sys
 from typing import Optional
 import pyperclip
 from pathlib import Path
+from textual import events
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
@@ -30,7 +31,7 @@ from textual.widgets import (
 )
 
 PROGRAM_NAME = "MarkLn"
-PROGRAM_VERSION = "1.0"
+PROGRAM_VERSION = "1.1"
 
 HELP_MARKDOWN = """\
 # Markdown Cheatsheet
@@ -134,7 +135,11 @@ def hello_world():
 - Ctrl+O - Open file
 - Ctrl+S - Save file
 - Ctrl+Shift+S - Save as
-- Ctrl+l - Show this help
+- Ctrl+L - Show this help
+- Ctrl+N - New File
+- Ctrl+G - Insert Tags
+- Ctrl+J - Sync Views
+- Ctrl+R - Toggle Wrap
 - Ctrl+Q - Quit
 
 ### Tips
@@ -298,7 +303,7 @@ class QuitDialog(ModalScreen):
 
     def compose(self) -> ComposeResult:
         yield Grid(
-            Static("You have unsaved changes. Save before quitting?", id="question"),
+            Static("You have unsaved changes. Save first?", id="question"),
             Button("Save", variant="primary", id="save"),
             Button("Don't Save", variant="error", id="dont_save"),
             Button("Cancel", id="cancel"),
@@ -364,6 +369,18 @@ class SimpleDirectoryTree(DirectoryTree):
     def on_mount(self) -> None:
         """Focus the tree when mounted"""
         self.focus()
+        
+class CustomFooter(Footer):
+    """Custom footer that includes cursor position"""
+    
+    def make_key_text(self) -> str:
+        """Override to add cursor position"""
+        base_text = super().make_key_text()
+        # Get cursor position from app if available
+        if hasattr(self.app, 'cursor_position'):
+            line, col = self.app.cursor_position
+            return f"{base_text} • Line: {line}, Col: {col}"
+        return base_text
 
 class SaveFileDialog(Screen):
     def __init__(self) -> None:
@@ -554,26 +571,51 @@ class OpenFileDialog(Screen):
     def cancel_pressed(self) -> None:
         self.dismiss(None)
 
-
 class MDEditor(App[None]):
     BINDINGS = [
-        ("ctrl+q", "quit", "Quit"),
-        ("ctrl+o", "load_file", "Open"),
-        ("ctrl+s", "save_file", "Save"),
-        ("ctrl+shift+s", "save_as", "Save as"),
-        ("ctrl+t", "toggle_editor", "Toggle"),
+        ("ctrl+q", "quit", ""),
+        ("ctrl+o", "load_file", ""),
+        ("ctrl+s", "save_file", ""),
+        ("ctrl+n", "new_file", ""),
+        ("ctrl+shift+s", "save_as", ""),
+        ("ctrl+t", "toggle_editor", ""),
+        ("ctrl+j", "sync_preview", ""),
         ("home", "scroll_home", ""),
         ("end", "scroll_end", ""),
         ("ctrl+home", "edit_scroll_home", ""),
         ("ctrl+end", "edit_scroll_end", ""),
-        ("f2", "sync_preview", "Sync"),
-         ("f3", "markdown_tags", "Tags"),  # Add this line
-        ("ctrl+l", "help", "Help")
+        ("ctrl+g", "markdown_tags", ""), 
+        ("ctrl+r", "toggle_wrap", ""),
+        ("ctrl+l", "help", "")
     ]
+    
+    # BINDINGS = [
+        # ("ctrl+q", "quit", "Quit"),
+        # ("ctrl+o", "load_file", "Open"),
+        # ("ctrl+s", "save_file", "Save"),
+        # ("ctrl+n", "new_file", "New"),
+        # ("ctrl+shift+s", "save_as", "Save as"),
+        # ("ctrl+t", "toggle_editor", "Toggle"),
+        # ("ctrl+j", "sync_preview", "Sync"),
+        # ("home", "scroll_home", ""),
+        # ("end", "scroll_end", ""),
+        # ("ctrl+home", "edit_scroll_home", ""),
+        # ("ctrl+end", "edit_scroll_end", ""),
+        # ("ctrl+g", "markdown_tags", "Tags"),  # Add this line
+        # ("ctrl+l", "help", "Help")
+    # ]
 
     CSS = """
     Screen {
         layout: vertical;
+    }
+    
+     .footer {
+        height: 1;
+        padding: 0 1;
+        background: $surface;
+        color: $text;
+        /* text-style: bold; */
     }
     
     #tags-dialog {
@@ -870,6 +912,8 @@ class MDEditor(App[None]):
         self._preview_update_scheduled = False
         self._original_content: str = ""
         self._has_unsaved_changes: bool = False
+        #self.footer_text = "Ctrl+O: Open • Ctrl+S: Save • Ctrl+Shift+S: Save As • Ctrl+T: Toggle • F2: Sync • F3: Tags • Ctrl+L: Help • Ctrl+Q: Quit"
+        self.footer_text = ""
 
     # def compose(self) -> ComposeResult:
         # yield Header(show_clock=True)
@@ -885,11 +929,13 @@ class MDEditor(App[None]):
         yield Header(show_clock=True)
         with Horizontal(id="ui"):
             yield TextArea(id="editor", tab_behavior="indent", language="markdown")
+            #yield TextArea.code_editor(id="editor", tab_behavior="indent", language="markdown")
             yield Markdown(id="preview")
         # Hidden fullscreen viewer overlay
         yield MarkdownViewer(id="preview_viewer", show_table_of_contents=True, classes="hidden")
-        yield Footer()
-
+        #yield CustomFooter()
+        yield Static(id="footer", classes="footer")  # Use Static instead of Footer
+    
     def on_mount(self) -> None:
         # Set theme first
         try:
@@ -903,6 +949,10 @@ class MDEditor(App[None]):
         editor = self.query_one("#editor", TextArea)
         editor.indent_type = "spaces"
         editor.indent_width = 2
+        editor.cursor_blink = True
+        editor.match_cursor_bracket = True
+        editor.compact = True
+        editor.show_line_numbers = True
         
         editor.focus()
         self._original_content = editor.text
@@ -910,6 +960,22 @@ class MDEditor(App[None]):
         # Load initial file if provided
         if self.initial_file:
             self.load_file(self.initial_file)
+        self.update_cursor_position() 
+            
+    @on(TextArea.Changed)
+    def on_text_changed(self, event: TextArea.Changed) -> None:
+        """Update cursor position when text changes (includes cursor moves during editing)"""
+        self.update_cursor_position()
+    
+    def update_cursor_position(self) -> None:
+        """Update cursor position in footer"""
+        editor = self.query_one("#editor", TextArea)
+        line, column = editor.cursor_location
+        line += 1
+        column += 1
+        
+        footer = self.query_one("#footer", Static)
+        footer.update(f"{line:>3}:{column:<3}|^O:Open|^S:Save|^Shift+S:Save As|^T:Toggle|^J:Sync|^G:Tags|^L:Help|^Q:Quit")
             
     def load_file(self, filename: str) -> None:
         """Load a file programmatically"""
@@ -964,7 +1030,42 @@ class MDEditor(App[None]):
             self.call_after_refresh(preview.update, text)
 
     def action_load_file(self) -> None:
-        self.push_screen(OpenFileDialog(), callback=self.load_file_callback)
+        if any(isinstance(screen, OpenFileDialog) for screen in self.screen_stack):
+            return  # Help screen already open
+        if self._has_unsaved_changes:
+            self.push_screen(QuitDialog(), callback=self._handle_openunsaved_decision)
+        else:
+            self.push_screen(OpenFileDialog(), callback=self.load_file_callback)
+    
+    def _handle_openunsaved_decision(self, decision: str) -> None:
+        if decision == "save":
+            if self.current_file:
+                self._save_to_file(self.current_file)
+                self._original_content = self.query_one("#editor", TextArea).text
+                self._has_unsaved_changes = False
+            else:
+                # If no current file, show save as dialog first
+                self.push_screen(SaveFileDialog(), callback=self._just_save)
+            self.push_screen(OpenFileDialog(), callback=self.load_file_callback)
+        elif decision == "dont_save":
+            self.push_screen(OpenFileDialog(), callback=self.load_file_callback)
+    
+    def _handle_new_decision(self, decision: str) -> None:
+        if decision == "save":
+            if self.current_file:
+                self._save_to_file(self.current_file)
+                self._original_content = self.query_one("#editor", TextArea).text
+                self._has_unsaved_changes = False
+                self.title = f"{PROGRAM_NAME} v{PROGRAM_VERSION} :: Untitled"
+            else:
+                # If no current file, show save as dialog first
+                self.reset_file()
+                self.push_screen(SaveFileDialog(), callback=self._just_save)
+                self.title = f"{PROGRAM_NAME} v{PROGRAM_VERSION} :: Untitled"
+            self.reset_file()
+            
+        elif decision == "dont_save":
+            self.reset_file()
 
     def load_file_callback(self, filename: Optional[str]) -> None:
         if not filename:
@@ -979,6 +1080,7 @@ class MDEditor(App[None]):
             self._has_unsaved_changes = False
             self.title = f"{PROGRAM_NAME} v{PROGRAM_VERSION} :: {os.path.basename(filename)}"
             self.notify(f"Loaded {filename}")
+            self.update_cursor_position() 
         except FileNotFoundError:
             self.notify("File not found", severity="error")
         except PermissionError:
@@ -992,6 +1094,10 @@ class MDEditor(App[None]):
         """Show markdown tags dialog"""
         if self.current_view_state == 2: return
         self.push_screen(MarkdownTagsDialog(), callback=self._insert_markdown_tag)
+        
+    def action_toggle_wrap(self) -> None:
+        editor = self.query_one("#editor", TextArea)
+        editor.soft_wrap = not editor.soft_wrap
 
     def _insert_markdown_tag(self, tag: Optional[str]) -> None:
         """Insert the selected markdown tag at cursor position"""
@@ -1084,7 +1190,7 @@ class MDEditor(App[None]):
         text = editor.text
 
         # footer is used as an anchor so we mount the viewer in the same area
-        footer = self.query_one(Footer)
+        footer = self.query_one("#footer")
 
         def ensure_viewer_with_text(text_to_set: str, on_mounted: Optional[callable] = None) -> None:
             """Ensure an overlay MarkdownViewer exists with `text_to_set` as content.
@@ -1183,6 +1289,8 @@ class MDEditor(App[None]):
             
     def action_help(self) -> None:  # Add this method
         """Show help screen"""
+        if any(isinstance(screen, HelpScreen) for screen in self.screen_stack):
+            return  # Help screen already open
         self.push_screen(HelpScreen())
     
     def _handle_quit_decision(self, decision: str) -> None:
@@ -1209,8 +1317,19 @@ class MDEditor(App[None]):
             self._has_unsaved_changes = False
             self.title = f"{PROGRAM_NAME} v{PROGRAM_VERSION} :: {os.path.basename(filename)}"
             self.exit()
+            
+    def _just_save(self, filename: Optional[str]) -> None:
+        """Save to a new file and then quit"""
+        if filename:
+            self._save_to_file(filename)
+            self.current_file = filename
+            self._original_content = self.query_one("#editor", TextArea).text
+            self._has_unsaved_changes = False
+            self.title = f"{PROGRAM_NAME} v{PROGRAM_VERSION} :: {os.path.basename(filename)}"
     
     def action_save_file(self) -> None:
+        if any(isinstance(screen, SaveFileDialog) for screen in self.screen_stack):
+            return  # Help screen already open
         if self.current_file:
             self._save_to_file(self.current_file)
             editor = self.query_one("#editor", TextArea)
@@ -1222,6 +1341,19 @@ class MDEditor(App[None]):
             self.title = f"{base_title}"
         else:
             self.push_screen(SaveFileDialog(), callback=self.save_file_callback)
+            
+    def action_new_file(self) -> None:
+        if self._has_unsaved_changes:
+            self.push_screen(QuitDialog(), callback=self._handle_new_decision)
+        else:
+            self.reset_file()
+    
+    def reset_file(self):
+        editor = self.query_one("#editor", TextArea)
+        editor.text = ""
+        self.title = f"{PROGRAM_NAME} v{PROGRAM_VERSION} :: Untitled"
+        self.current_file = None
+        self._has_unsaved_changes = False
 
     def action_save_as(self) -> None:
         self.push_screen(SaveFileDialog(), callback=self.save_file_callback)

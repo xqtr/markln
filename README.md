@@ -1,4 +1,4 @@
-# MarkLn v1.0
+# MarkLn v1.1
 
 A terminal-based markdown editor built with Textual (Python TUI framework)
 
@@ -19,6 +19,7 @@ A feature-rich markdown editor that runs in the terminal with real-time preview.
 - Editor supports common key shortcuts for copy/paste/undo - ctrl-c, ctrl-x, ctrl-w
 - Support for terminal shortcuts like ctrl-w and others
 - Resize on the fly
+- Syntax Highlighting
 
 ### INSTALLATION
 
@@ -34,24 +35,13 @@ Clone the repository:
 `git clone <repository-url>`
 `cd markln`
 
-**Install Textual:**
+**Install requirements:**
 
-`pip install textual`
-
-**Install Textual:**
-
-`pip install pyperclip`
+`pip install -r requirements.txt`
 
 **Run the editor:**
 
 `python markln.py`
-
-You can also use:
-
-`pip install -r requirements.txt`
-
-...to install all required libraries in one move.
-
 
 ### USAGE
 
@@ -63,8 +53,10 @@ Keyboard shortcuts:
 - Ctrl+Shift+S: Save as
 - Ctrl+T: Toggle editor/preview
 - Ctrl+L: Show help
-- F2 : Sync Editor with Preview
-- F3 : Dialog box to insert Markdown Tags
+- Ctrl+N: New file
+- Ctrl+R: Toggle Wrap
+- Ctrl+J: Sync Editor with Preview
+- Ctrl+G : Dialog box to insert Markdown Tags
 - Ctrl+Q: Quit
 - Ctrl+Home: Go to document start
 - Ctrl+End: Go to document end
