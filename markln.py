@@ -140,6 +140,7 @@ def hello_world():
 - Ctrl+G - Insert Tags
 - Ctrl+J - Sync Views
 - Ctrl+R - Toggle Wrap
+- Ctrl+\\ - Copy all document to clipboard
 - Ctrl+Q - Quit
 
 ### Tips
@@ -584,8 +585,9 @@ class MDEditor(App[None]):
         ("end", "scroll_end", ""),
         ("ctrl+home", "edit_scroll_home", ""),
         ("ctrl+end", "edit_scroll_end", ""),
-        ("ctrl+g", "markdown_tags", ""), 
+        ("ctrl+g", "markdown_tags", ""),
         ("ctrl+r", "toggle_wrap", ""),
+        ("ctrl+backslash", "copy_doc", ""),
         ("ctrl+l", "help", "")
     ]
     
@@ -975,7 +977,7 @@ class MDEditor(App[None]):
         column += 1
         
         footer = self.query_one("#footer", Static)
-        footer.update(f"{line:>3}:{column:<3}|^O:Open|^S:Save|^Shift+S:Save As|^T:Toggle|^J:Sync|^G:Tags|^L:Help|^Q:Quit")
+        footer.update(f"{line:>3}:{column:<3}|^O:Open|^S:Save|^Shift+S:Save As|^T:Toggle|^J:Sync|^G:Tags|^L:Help|^\\:Copy|^Q:Quit")
             
     def load_file(self, filename: str) -> None:
         """Load a file programmatically"""
@@ -1394,6 +1396,12 @@ class MDEditor(App[None]):
                 self.notify(f"Failed to copy to clipboard: {e}", severity="error")
         # Still let TextArea handle its internal copy
         editor.copy()
+        
+    def action_copy_doc(self) -> None:
+        """Handle Ctrl+C to copy to system clipboard"""
+        editor = self.query_one("#editor", TextArea)
+        pyperclip.copy(editor.text)
+        self.notify("Document copied to system clipboard")
 
     def key_ctrl_x(self) -> None:
         """Handle Ctrl+X to cut to system clipboard"""
