@@ -1463,11 +1463,13 @@ class MDEditor(App[None]):
             pr = self.query_one("#preview_viewer", MarkdownViewer)
             pr.scroll_end()
 
-
-if __name__ == "__main__":
+def main():
     args = parse_arguments()
     
     # Create app with command line arguments
     app = MDEditor(initial_file=args.file, theme=args.theme)
     
     app.run()
+
+if __name__ == "__main__":
+    main()

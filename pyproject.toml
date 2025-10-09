@@ -1,0 +1,20 @@
+[project]
+name = "markln"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Zaloog", email = "gramslars@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pyperclip>=1.8.2",
+    "textual[syntax]>=0.52.1",
+]
+
+[project.scripts]
+markln = "markln:main"
+
+[build-system]
+requires = ["uv_build>=0.8.19,<0.9.0"]
+build-backend = "uv_build"
