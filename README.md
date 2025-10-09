@@ -1,4 +1,4 @@
-# MarkLn v1.1
+# MarkLn v1.2
 
 A terminal-based markdown editor built with Textual (Python TUI framework)
 
@@ -56,8 +56,9 @@ Keyboard shortcuts:
 - Ctrl+N: New file
 - Ctrl+R: Toggle Wrap
 - Ctrl+J: Sync Editor with Preview
-- Ctrl+G : Dialog box to insert Markdown Tags
+- Ctrl+G: Dialog box to insert Markdown Tags
 - Ctrl+Q: Quit
+- Ctrl+\: Options Menu
 - Ctrl+Home: Go to document start
 - Ctrl+End: Go to document end
 
@@ -97,3 +98,21 @@ For issues and questions, please check the issues page or create a new issue wit
 
 This editor is designed for developers who prefer working in the terminal and need a quick, efficient way to edit markdown files with instant visual feedback.
 
+### CHANGELOG
+
+**1.1**
+
+- When text is changed and try to quit or create a new file, now a Save dialog appears.
+- Minor bugs and code optimization.
+
+**1.2**
+- Added feature to show/hide TOC
+- Added Options dialog, with functions
+- Colorized the statusbar
+- When in full editor mode, the markdown preview doesn't update, so makes typing quicker and responsive
+- Added the option to stop continues rendering of Markdown on the preview, to make typing more responsive. You can Update the preview, from the options menu
+- The app. now has a config file to save default values, like theme, last file, window mode
+- You can specify in which mode you want the app to open at start, with the "window_mode" value of the config file. The values it accepts are: split, preview, editor
+- Added support for installing external themes. Specify the folder of the themes and the name of the theme file to load a new one.
+- When exiting the program, the current theme will be saved and applied next time you run it again
+- Three new themes provided: Arctic, Turbo Pascal, MSDOS

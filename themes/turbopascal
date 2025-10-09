@@ -1,0 +1,24 @@
+{
+    "name": "turbopascal",
+    "primary": "#FFFFFF",
+    "secondary": "#FFFF00",
+    "accent": "#00FFFF",
+    "foreground": "#FFFFFF",
+    "background": "#0000A8",
+    "success": "#00FF00",
+    "warning": "#FFFF00",
+    "error": "#FF0000",
+    "surface": "#000080",
+    "panel": "#AAAAAA",
+    "dark": true,
+    "variables": {
+        "block-cursor-text-style": "reverse",
+        "footer-key-foreground": "#FFFF00",
+        "input-selection-background": "#008000 25%",
+        "border": "#FFFF00",
+        "border-color": "#008000",
+        "menu-highlight": "#FFFF00",
+        "menu-background": "#008000",
+        "menu-foreground": "#00FFFF"
+    }
+}

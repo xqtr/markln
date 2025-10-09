@@ -1,11 +1,12 @@
 #!/usr/bin/python3
-
+from time import sleep
 import os
 import argparse
-import sys
+import json
 from typing import Optional
 import pyperclip
 from pathlib import Path
+from textual.theme import Theme
 from textual import events
 from textual import on, work
 from textual.app import App, ComposeResult
@@ -31,7 +32,10 @@ from textual.widgets import (
 )
 
 PROGRAM_NAME = "MarkLn"
-PROGRAM_VERSION = "1.1"
+PROGRAM_VERSION = "1.2"
+CONFIG_DIR = Path.home() / ".config/markln"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+CUSTOM_THEME = None
 
 HELP_MARKDOWN = """\
 # Markdown Cheatsheet
@@ -152,6 +156,43 @@ def hello_world():
 
 """
 
+
+def load_config() -> dict:
+    global CONFIG_FILE
+    """Load user configuration from ~/.markln/config.json.
+
+    Returns a dictionary with config values or sensible defaults.
+    """
+    default_config = {
+        "theme": "textual-dark",
+        "themefolder":"./themes/",
+        "last_file": None,
+        "window_mode": "split",  # split | editor | preview
+    }
+
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # merge defaults with loaded data
+            return {**default_config, **data}
+        except Exception as e:
+            print(f"[WARN] Failed to read config: {e}")
+            return default_config
+    else:
+        return default_config
+
+
+def save_config(config: dict) -> None:
+    """Save configuration to ~/.markln/config.json."""
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+    except Exception as e:
+        print(f"[WARN] Failed to save config: {e}")
+        
+
 class MarkdownTagsDialog(ModalScreen):
     """Dialog for selecting and inserting markdown tags"""
     
@@ -178,6 +219,65 @@ class MarkdownTagsDialog(ModalScreen):
     def compose(self) -> ComposeResult:
         yield Grid(
             Static("Select Markdown Tag (Enter to insert, Esc to cancel)", id="tags-title"),
+            ListView(
+                *[ListItem(Label(tag[0]), id=f"tag-{i}") for i, tag in enumerate(self.MARKDOWN_TAGS)],
+                id="tags-list"
+            ),
+            Button("Cancel", variant="error", id="cancel"),
+            id="tags-dialog"
+        )
+
+    def on_mount(self) -> None:
+        self.query_one("#tags-list").focus()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Handle tag selection"""
+        selected_index = int(event.item.id.split("-")[1])
+        selected_tag = self.MARKDOWN_TAGS[selected_index][1]
+        self.dismiss(selected_tag)
+
+    @on(Button.Pressed, "#cancel")
+    def cancel_pressed(self) -> None:
+        self.dismiss(None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+        
+    def key_home(self) -> None:
+        """Move selection to first item"""
+        list_view = self.query_one("#tags-list")
+        list_view.index = 0
+
+    def key_end(self) -> None:
+        """Move selection to last item"""
+        list_view = self.query_one("#tags-list")
+        list_view.index = len(self.MARKDOWN_TAGS) - 1
+
+    def key_pageup(self) -> None:
+        """Move selection up by page"""
+        list_view = self.query_one("#tags-list")
+        list_view.index = max(0, list_view.index - 5)
+
+    def key_pagedown(self) -> None:
+        """Move selection down by page"""
+        list_view = self.query_one("#tags-list")
+        list_view.index = min(len(self.MARKDOWN_TAGS) - 1, list_view.index + 5)
+        
+class OptionsDialog(ModalScreen):
+    """Dialog for selecting various options"""
+    
+    MARKDOWN_TAGS = [
+        ("Copy All text to clipboard", "copyall"),
+        ("Copy Selection to clipboard", "copysel"),
+        ("Paste from clipboard", "paste"),
+        ("Toggle Auto Update Preview", "toggle_preview"),
+        ("Update Preview", "update_preview"),
+        ("Hide Table Of Contents", "treeview"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Grid(
+            Static("Select an Option", id="options-title"),
             ListView(
                 *[ListItem(Label(tag[0]), id=f"tag-{i}") for i, tag in enumerate(self.MARKDOWN_TAGS)],
                 id="tags-list"
@@ -288,7 +388,7 @@ def parse_arguments():
     parser.add_argument("file", nargs="?", help="Markdown file to open")
     parser.add_argument(
         "--theme",
-        default="textual-dark",
+        default=None,
         help=(
             "Theme to use (built-in options include: textual-dark, textual-light, monokai, dracula, "
             "github-dark, github-light, nord, zenburn, and others)"
@@ -573,6 +673,7 @@ class OpenFileDialog(Screen):
         self.dismiss(None)
 
 class MDEditor(App[None]):
+    global CUSTOM_THEME
     BINDINGS = [
         ("ctrl+q", "quit", ""),
         ("ctrl+o", "load_file", ""),
@@ -587,26 +688,9 @@ class MDEditor(App[None]):
         ("ctrl+end", "edit_scroll_end", ""),
         ("ctrl+g", "markdown_tags", ""),
         ("ctrl+r", "toggle_wrap", ""),
-        ("ctrl+backslash", "copy_doc", ""),
+        ("ctrl+backslash", "options", ""),
         ("ctrl+l", "help", "")
     ]
-    
-    # BINDINGS = [
-        # ("ctrl+q", "quit", "Quit"),
-        # ("ctrl+o", "load_file", "Open"),
-        # ("ctrl+s", "save_file", "Save"),
-        # ("ctrl+n", "new_file", "New"),
-        # ("ctrl+shift+s", "save_as", "Save as"),
-        # ("ctrl+t", "toggle_editor", "Toggle"),
-        # ("ctrl+j", "sync_preview", "Sync"),
-        # ("home", "scroll_home", ""),
-        # ("end", "scroll_end", ""),
-        # ("ctrl+home", "edit_scroll_home", ""),
-        # ("ctrl+end", "edit_scroll_end", ""),
-        # ("ctrl+g", "markdown_tags", "Tags"),  # Add this line
-        # ("ctrl+l", "help", "Help")
-    # ]
-
     CSS = """
     Screen {
         layout: vertical;
@@ -733,6 +817,30 @@ class MDEditor(App[None]):
         /* border: solid $accent; */
     }
     
+    MarkdownH1 {
+        background: #A0A0A030;
+        padding: 1;
+        margin: 1 1;
+    }
+    
+    MarkdownH2 {
+        background: #A0A0A030;
+        padding: 0 1;
+        text-align: center;
+        text-style: bold;
+        margin: 1 1;
+    }
+    
+    MarkdownH3 {
+        text-style: bold;
+        margin: 2 1;
+    }
+    
+    MarkdownH4 {
+        text-style: underline;
+        margin: 2 1;
+    }
+    
     #ui.editor-only #editor {
         width: 100% !important;
     }
@@ -746,20 +854,6 @@ class MDEditor(App[None]):
         /* border: solid $accent; */
         padding: 1;
         overflow: auto;
-    }
-    
-    MarkdownH1 {
-        background: #303030;
-        padding: 1;
-        /* border-left: solid #ffcc00; */
-        margin: 1 1;
-    }
-    
-    MarkdownH2 {
-        background: #303030;
-        padding: 0 1;
-        /* border-left: solid #ffcc00; */
-        margin: 1 1;
     }
     
     /* Ensure proper focus styling */
@@ -862,6 +956,10 @@ class MDEditor(App[None]):
         align: center middle;
     }
     
+    OptionsDialog {
+        align: center middle;
+    }
+    
     #quit-dialog {
         grid-size: 3;  /* 3 columns for three horizontal buttons */
         grid-gutter: 1 1;
@@ -913,20 +1011,11 @@ class MDEditor(App[None]):
         self.current_file: Optional[str] = None
         self._preview_update_scheduled = False
         self._original_content: str = ""
+        self.do_auto_preview = True
         self._has_unsaved_changes: bool = False
-        #self.footer_text = "Ctrl+O: Open • Ctrl+S: Save • Ctrl+Shift+S: Save As • Ctrl+T: Toggle • F2: Sync • F3: Tags • Ctrl+L: Help • Ctrl+Q: Quit"
+        # self.footer_text = "Ctrl+O: Open • Ctrl+S: Save • Ctrl+Shift+S: Save As • Ctrl+T: Toggle • F2: Sync • F3: Tags • Ctrl+L: Help • Ctrl+Q: Quit"
         self.footer_text = ""
 
-    # def compose(self) -> ComposeResult:
-        # yield Header(show_clock=True)
-        # with Horizontal(id="ui"):
-            # yield TextArea(
-                # id="editor",
-                # tab_behavior="indent",
-            # )
-            # yield Markdown(id="preview")
-        # yield Footer()
-        
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Horizontal(id="ui"):
@@ -937,17 +1026,11 @@ class MDEditor(App[None]):
         yield MarkdownViewer(id="preview_viewer", show_table_of_contents=True, classes="hidden")
         #yield CustomFooter()
         yield Static(id="footer", classes="footer")  # Use Static instead of Footer
-    
+
     def on_mount(self) -> None:
         # Set theme first
-        try:
-            self.theme = self._requested_theme
-        except Exception:
-            # Fallback to safe default
-            self.theme = "textual-dark"
-            self.notify(f"Unknown theme '{self._requested_theme}', using textual-dark instead.", severity="warning")
+        theme_value = getattr(self, "_requested_theme", config.get("theme", "textual-dark"))
 
-        
         editor = self.query_one("#editor", TextArea)
         editor.indent_type = "spaces"
         editor.indent_width = 2
@@ -955,15 +1038,20 @@ class MDEditor(App[None]):
         editor.match_cursor_bracket = True
         editor.compact = True
         editor.show_line_numbers = True
-        
+
         editor.focus()
         self._original_content = editor.text
-               
+
         # Load initial file if provided
         if self.initial_file:
             self.load_file(self.initial_file)
-        self.update_cursor_position() 
-            
+        self.update_cursor_position()
+        self.action_toggle_editor()
+
+    def get_active_theme(self) -> str:
+        """Return the current active theme name or .tcss path."""
+        return getattr(self, "_custom_theme_path", self.theme)
+
     @on(TextArea.Changed)
     def on_text_changed(self, event: TextArea.Changed) -> None:
         """Update cursor position when text changes (includes cursor moves during editing)"""
@@ -977,7 +1065,7 @@ class MDEditor(App[None]):
         column += 1
         
         footer = self.query_one("#footer", Static)
-        footer.update(f"{line:>3}:{column:<3}|^O:Open|^S:Save|^Shift+S:Save As|^T:Toggle|^J:Sync|^G:Tags|^L:Help|^\\:Copy|^Q:Quit")
+        footer.update(f"{line:>3}:{column:<3}|^O[d]:Open[/]|^S[d]:Save[/]|^Shift+S[d]:Save As[/]|^T[d]:Toggle[/]|^J[d]:Sync[/]|^G[d]:Tags[/]|^L[d]:Help[/]|^\\:[d]Options[/]|^Q[d]:Quit[/]")
             
     def load_file(self, filename: str) -> None:
         """Load a file programmatically"""
@@ -1001,6 +1089,8 @@ class MDEditor(App[None]):
     @on(TextArea.Changed, "#editor")
     def update_preview(self) -> None:
         """Update preview with debouncing and track changes"""
+        if self.current_view_state == 1: return
+        if self.do_auto_preview == False: return
         if not self._preview_update_scheduled:
             self._preview_update_scheduled = True
             self.set_timer(1, self._do_update_preview)
@@ -1096,6 +1186,10 @@ class MDEditor(App[None]):
         """Show markdown tags dialog"""
         if self.current_view_state == 2: return
         self.push_screen(MarkdownTagsDialog(), callback=self._insert_markdown_tag)
+    
+    def action_options(self) -> None:
+        """Show options dialog"""
+        self.push_screen(OptionsDialog(), callback=self._execute_option)
         
     def action_toggle_wrap(self) -> None:
         editor = self.query_one("#editor", TextArea)
@@ -1107,6 +1201,41 @@ class MDEditor(App[None]):
             editor = self.query_one("#editor", TextArea)
             editor.insert(tag)
             editor.focus()
+            
+    def _execute_option(self, tag: Optional[str]) -> None:
+        if tag == "copyall":
+            editor = self.query_one("#editor", TextArea)
+            if editor.text:
+                pyperclip.copy(editor.text)
+                self.notify("Document copied to system clipboard")
+            else:
+                self.notify("No text to copy...")
+        elif tag == "update_preview":
+            prestate = self.do_auto_preview
+            self.do_auto_preview = True
+            self.update_preview()
+            self.do_auto_preview = prestate
+        elif tag == "toggle_preview":
+            self.do_auto_preview = not self.do_auto_preview
+            if self.do_auto_preview:
+                self.update_preview()
+        elif tag == "paste":
+            self.key_ctrl_v()
+        elif tag == "copysel":
+            editor = self.query_one("#editor", TextArea)
+            selected_text = editor.selected_text
+            if selected_text:
+                try:
+                    pyperclip.copy(selected_text)
+                    self.notify("Copied to system clipboard")
+                except Exception as e:
+                    self.notify(f"Failed to copy to clipboard: {e}", severity="error")
+            else:
+                self.notify("No text to copy...")
+        
+        elif tag == "treeview":
+            pv = self.query_one("#preview_viewer", MarkdownViewer)
+            pv.show_table_of_contents = (not pv.show_table_of_contents)
     
     def action_scroll_home(self) -> None:
         """Scroll to the top"""
@@ -1396,12 +1525,6 @@ class MDEditor(App[None]):
                 self.notify(f"Failed to copy to clipboard: {e}", severity="error")
         # Still let TextArea handle its internal copy
         editor.copy()
-        
-    def action_copy_doc(self) -> None:
-        """Handle Ctrl+C to copy to system clipboard"""
-        editor = self.query_one("#editor", TextArea)
-        pyperclip.copy(editor.text)
-        self.notify("Document copied to system clipboard")
 
     def key_ctrl_x(self) -> None:
         """Handle Ctrl+X to cut to system clipboard"""
@@ -1424,6 +1547,8 @@ class MDEditor(App[None]):
                 editor = self.query_one("#editor", TextArea)
                 editor.insert(clipboard_text)
                 self.notify("Pasted from system clipboard")
+            else:
+                self.notify("Nothing to paste...")
         except Exception as e:
             self.notify(f"Failed to paste from clipboard: {e}", severity="error")
     
@@ -1464,10 +1589,42 @@ class MDEditor(App[None]):
             pr.scroll_end()
 
 
+def load_theme_from_file(path: str | Path) -> Theme:
+    """Load a Textual theme from a JSON file."""
+    path = Path(path)
+    with path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Pass JSON fields directly as keyword arguments to Theme()
+    return Theme(**data)
+
+
 if __name__ == "__main__":
     args = parse_arguments()
-    
-    # Create app with command line arguments
-    app = MDEditor(initial_file=args.file, theme=args.theme)
-    
+    config = load_config()
+    # Command-line theme overrides config
+    theme = args.theme
+
+    app = MDEditor(initial_file=args.file)
+    if not theme:
+        tmp = config.get("theme", "textual-dark")
+        if os.path.isfile(config.get("themefolder")+tmp):
+            themefile = load_theme_from_file(config.get("themefolder")+tmp)
+            app.register_theme(themefile)
+            app.theme = themefile.name
+        else:
+            app.theme = tmp
+
+    if config['window_mode'] == "split":
+        app.current_view_state = 2
+    elif config['window_mode'] == "editor":
+        app.current_view_state = 3
+    else:
+        app.current_view_state = 1
+
     app.run()
+
+    # Save current theme and last file when exiting
+    config["theme"] = app.get_active_theme()
+    config["last_file"] = app.current_file
+    save_config(config)
