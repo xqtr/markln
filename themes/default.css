@@ -1,0 +1,302 @@
+Screen {
+    layout: vertical;
+}
+
+ .footer {
+    height: 1;
+    padding: 0 1;
+    background: $surface;
+    color: $text;
+    /* text-style: bold; */
+}
+
+#tags-dialog {
+    grid-size: 1;
+    grid-gutter: 1 1;
+    grid-rows: auto 1fr auto;
+    padding: 0 1;
+    width: 40;
+    height: 20;
+    border: thick $background 80%;
+    background: $surface;
+}
+
+#tags-title {
+    height: auto;
+    width: 100%;
+    content-align: center middle;
+    padding: 1;
+    text-style: bold;
+}
+
+#tags-list {
+    width: 100%;
+    height: 1fr;
+    border: solid $accent;
+}
+
+#tags-dialog Button {
+    width: 100%;
+    height: 3;
+}
+
+.hidden {
+    display: none;
+}
+
+Notify {
+    align: right top;
+}
+
+#dialog-container {
+    width: 100%;
+    height: 100%;
+    layout: vertical;
+}
+
+.dialog-top {
+    height: 6;
+    padding: 1;
+    /* border: solid $accent; */
+    background: $panel;
+}
+
+.savedialog-top {
+    height: 10;
+    padding: 1;
+    /* border: solid $accent; */
+    background: $panel;
+}
+
+.dialog-bottom {
+    height: auto;
+    padding:1;
+    /* border: solid $accent; */
+    background: $panel;
+}
+
+.dialog-label {
+    margin-bottom: 0;
+    color: $text;
+}
+
+.dialog-input {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+#tree_container {
+    width: 100%;
+    height: 1fr;
+    /* border: solid $accent; */
+}
+
+#tree {
+    width: 100%;
+    height: 100%;
+}
+
+#buttons_container {
+    height: auto;
+}
+
+#button_row {
+    width: 100%;
+    align: center middle;
+    height: auto;
+}
+
+#button_row > Button {
+    margin: 0 1;
+}
+
+/* Main app layout */
+#ui {
+    width: 100%;
+    height: 1fr;
+    layout: horizontal;
+}
+
+#editor {
+    width: 1fr;
+    height: 100%;
+    /* border: solid $accent; */
+}
+
+MarkdownH1 {
+    background: #A0A0A030;
+    padding: 1;
+    margin: 1 1;
+}
+
+MarkdownH2 {
+    background: #A0A0A030;
+    padding: 0 1;
+    text-align: center;
+    text-style: bold;
+    margin: 1 1;
+}
+
+MarkdownH3 {
+    text-style: bold;
+    margin: 2 1;
+}
+
+MarkdownH4 {
+    text-style: underline;
+    margin: 2 1;
+}
+
+#ui.editor-only #editor {
+    width: 100% !important;
+}
+#ui.preview-only #preview {
+    width: 100% !important;
+}
+
+#preview {
+    width: 1fr;
+    height: 100%;
+    /* border: solid $accent; */
+    padding: 1;
+    overflow: auto;
+}
+
+/* Ensure proper focus styling */
+DirectoryTree:focus {
+   /* border: solid $accent; */
+}
+
+ #yesno-dialog {
+    width: auto;
+    height: auto;
+    padding: 2;
+    /* border: double $accent; */
+    background: $panel;
+    align: center middle;
+}
+
+#message {
+    text-align: center;
+    margin-bottom: 2;
+}
+
+#yesno-buttons {
+    align: center middle;
+}
+
+#yesno-buttons > Button {
+    margin: 0 1;
+}
+    #quit-dialog {
+    width: auto;
+    height: auto;
+    padding: 2;
+    /* border: double $accent; */
+    background: $panel;
+    align: center middle;
+}
+
+#quit-dialog {
+    width: auto;
+    height: auto;
+    padding: 2;
+    border: double $accent;
+    background: $panel;
+    align: center middle;
+    max-width: 50;
+    max-height: 10;
+}
+#quit-dialog #message {
+    text-align: center;
+    margin-bottom: 2;
+}
+#quit-buttons {
+    align: center middle;
+}
+#quit-buttons > Button {
+    margin: 0 1;
+}
+
+#help-container {
+    width: 100%;
+    height: 100%;
+    layout: vertical;
+}
+
+#help-content {
+    width: 100%;
+    height: 1fr;
+    padding: 1 2;
+    overflow-y: auto;
+    /* border: solid $accent; */
+}
+
+#help-content:focus {
+    /* border: double $accent; */
+}
+
+#help-buttons {
+    height: auto;
+    padding: 1;
+    /* border: solid $accent; */
+    background: $panel;
+}
+
+#help-buttons > Horizontal {
+    width: 100%;
+    align: right middle;
+    height: auto;
+}
+.nav-button {
+    width: auto;
+    min-width: 5;
+    margin-right: 1;
+}
+
+QuitDialog {
+    align: center middle;
+}
+
+MarkdownTagsDialog {
+    align: center middle;
+}
+
+OptionsDialog {
+    align: center middle;
+}
+
+#quit-dialog {
+    grid-size: 3;  /* 3 columns for three horizontal buttons */
+    grid-gutter: 1 1;
+    grid-rows: 1fr auto;  /* Row 1 for question, Row 2 auto for buttons */
+    padding: 0 1;
+    width: auto;
+    height: 15;
+    border: thick $background 80%;
+    background: $surface;
+}
+
+#question {
+    column-span: 3;  /* Span all three columns */
+    height: 1fr;
+    width: 1fr;
+    content-align: center middle;
+}
+
+#quit-dialog Button {
+    width: 1fr;  /* Equal width across columns */
+    height: 3;
+}
+
+Button {
+    width: 100%;
+}
+
+#path_input {
+    border: blank;
+}
+
+#filename  {
+    border: blank;
+}

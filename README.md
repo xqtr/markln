@@ -21,27 +21,80 @@ A feature-rich markdown editor that runs in the terminal with real-time preview.
 - Resize on the fly
 - Syntax Highlighting
 
-### INSTALLATION
+# Installation Ubuntu/Debian
 
-#### Prerequisites:
+This guide will walk you through installing the 'markln' application on Ubuntu or Debian-based systems using the provided '.deb' package.
 
-- Python 3.8 or higher
-- pip package manager
+**Step 1: Download the .deb package**
 
-**Steps:**
+1.  Open your web browser and go to the MarkLn GitHub Releases page:
+    `https://github.com/lowtiertrash/markln_deb/releases` (Replace 'lowtiertrash/markln_deb' with your actual repository path if different).
+2.  Locate the latest release (e.g., 'v0.1.0').
+3.  Under the "Assets" section of the release, download the `markln_0.1.0_all.deb` file.
 
-Clone the repository:
+ Alternatively, you can download it directly from your terminal. Replace 'YOUR_GITHUB_USERNAME' and 'YOUR_REPO_NAME' and 'VERSION' with the correct values.
 
-`git clone <repository-url>`
-`cd markln`
+```bash
+# Example using wget (replace with actual download URL from GitHub Releases)
+wget https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME/releases/download/VERSION/markln_0.1.0_all.deb
+```
+*Example for v0.1.0 assuming lowtiertrash/markln_deb:*
+```bash
+wget https://github.com/lowtiertrash/markln_deb/releases/download/v0.1.0/markln_0.1.0_all.deb
+```
 
-**Install requirements:**
+**Step 2: Install the .deb package**
 
-`pip install -r requirements.txt`
+1.  Open your terminal.
+2.  Navigate to the directory where you downloaded the '.deb' package (e.g., `cd ~/Downloads`).
+3.  Install the package using `dpkg`:
+ ```bash
+ sudo dpkg -i markln_0.1.0_all.deb
+ ```
+You might encounter dependency errors during this step. This is normal if you don't have all required libraries installed. We will fix this in the next step.
 
-**Run the editor:**
 
-`python markln.py`
+**Step 3: Resolve Dependencies (if any)**
+
+If `dpkg` reported dependency errors, you can automatically install the missing packages using `apt`:
+
+```bash
+sudo apt install -f
+```
+
+This command will attempt to correct a system where dependencies are unmet. It will usually install any missing packages required by 'markln'.
+
+**Step 4: Run MarkLn**
+
+Once the installation is complete and dependencies are resolved, you can launch the MarkLn application directly from your terminal:
+
+```bash
+markln
+```
+If you encounter any issues, please refer to the troubleshooting section or report an issue on the GitHub repository.
+
+
+
+# PIP INSTALLATION 
+ Prerequisites:
+ Python 3.8 or higher
+ pip package manager
+ Steps:
+
+ ## Clone the repository:
+```
+ git clone <repository-url> cd markln
+```
+ Install requirements:
+```
+ pip install -r requirements.txt
+```
+ Run the editor:
+
+ ```
+python markln.py
+ ```
+
 
 ### USAGE
 
