@@ -1,4 +1,4 @@
-# MarkLn v1.2
+# MarkLn v1.3
 
 A terminal-based markdown editor built with Textual (Python TUI framework)
 
@@ -15,11 +15,15 @@ A feature-rich markdown editor that runs in the terminal with real-time preview.
 - Keyboard-driven: Fully operable with keyboard shortcuts
 - Full mouse support also
 - Theme support
+- Autocomplete feature for brackets and markdown syntax
+- VIM keybindings support INSERT/NORMAL modes ^
 - Comprehensive help: Built-in markdown syntax reference
 - Editor supports common key shortcuts for copy/paste/undo - ctrl-c, ctrl-x, ctrl-w
 - Support for terminal shortcuts like ctrl-w and others
 - Resize on the fly
 - Syntax Highlighting
+
+^ VIM support is not 100% implemented
 
 ### INSTALLATION
 
@@ -61,6 +65,7 @@ Keyboard shortcuts:
 - Ctrl+\: Options Menu
 - Ctrl+Home: Go to document start
 - Ctrl+End: Go to document end
+- ESC: Goes to VIM Mode (i to return to normal mode)
 
 ### SUPPORTED MARKDOWN
 
@@ -72,6 +77,40 @@ Keyboard shortcuts:
 - Blockquotes
 - Tables
 - Horizontal rules
+
+### AUTOCOMPLETE FEATURE
+
+The program can now autocomplete brackets like: []. (), {} 
+It can also complete the bold ** and strike-through ~~ markdown syntax, as well detect an Image link ![] and add the parenthesis.
+
+### VIM KEYBINDINGS SUPPORT
+
+| Action                  | Key(s)                  | Description                          |
+|-------------------------|-------------------------|--------------------------------------|
+| Enter Insert mode       | `i` `I` `a` `A` `s` `S` `o` `O` | Standard Vim entry points            |
+| Back to Normal mode     | `Esc` or `Ctrl+C`       | From Insert mode                     |
+
+**Navigation**
+- `h` / `j` / `k` / `l` — left / down / up / right  
+- `w` / `b` — word forward / word backward  
+- Arrow keys (`←` `↓` `↑` `→`) — also work (Textual native movement)  
+- `0` — start of line  
+- `$` — end of line  
+- `gg` — top of document  
+- `G` — bottom of document  
+
+**Editing**
+- `x` — delete character under cursor  
+- `X` — delete character before cursor  
+- `dd` — delete current line  
+- `yy` — yank (copy) current line to system clipboard  
+- `p` — paste after cursor  
+- `P` — paste before cursor  
+- `dw` — delete word (forward)  
+- `u` — undo last change  
+
+**Special**
+- `S` — delete line and enter Insert mode (like `cc` in Vim)
 
 ### DEPENDENCIES
 
@@ -116,3 +155,7 @@ This editor is designed for developers who prefer working in the terminal and ne
 - Added support for installing external themes. Specify the folder of the themes and the name of the theme file to load a new one.
 - When exiting the program, the current theme will be saved and applied next time you run it again
 - Three new themes provided: Arctic, Turbo Pascal, MSDOS
+
+**1.3**
+- VIM Keybindings support
+- Autocomplete feature added

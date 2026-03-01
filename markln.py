@@ -30,12 +30,17 @@ from textual.widgets import (
     TextArea,
     DirectoryTree,
 )
+from enum import Enum
+from textual.events import Key
+from textual.reactive import reactive
+
 
 PROGRAM_NAME = "MarkLn"
-PROGRAM_VERSION = "1.2"
+PROGRAM_VERSION = "1.3"
 CONFIG_DIR = Path.home() / ".config/markln"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 CUSTOM_THEME = None
+AUTOCOMPLETE = True
 
 HELP_MARKDOWN = """\
 # Markdown Cheatsheet
@@ -273,6 +278,7 @@ class OptionsDialog(ModalScreen):
         ("Toggle Auto Update Preview", "toggle_preview"),
         ("Update Preview", "update_preview"),
         ("Hide Table Of Contents", "treeview"),
+        ("Toggle Autocomplete", "auto"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -672,6 +678,249 @@ class OpenFileDialog(Screen):
     def cancel_pressed(self) -> None:
         self.dismiss(None)
 
+
+class MODES(str, Enum):
+    NORMAL = 'normal'
+    VISUAL = 'visual'
+    INSERT = 'insert'
+    
+
+class ExtendedTextArea(TextArea):
+    """A subclass of TextArea with parenthesis-closing + full VIM keybindings."""
+
+    opening_brackets = {'(': ')', '[': ']', '{': '}'}
+    closing_brackets = set(')]}')
+
+    mode: reactive[MODES] = reactive(MODES.INSERT)
+    last_keys: reactive[str] = reactive('')          # ← for dd, gg, yy, etc.
+
+    def watch_mode(self):
+        self.border_title = f"{self.mode.value.upper()} {self.last_keys}"
+        self.read_only = (self.mode == MODES.NORMAL)
+
+    def watch_last_keys(self):
+        """Nice visual feedback for multi-key commands (dd, gg, etc.)"""
+        self.border_title = f"{self.mode.value.upper()} {self.last_keys}"
+
+    def _on_key(self, event: events.Key) -> None:
+        global AUTOCOMPLETE
+
+        key = event.character
+
+        if self.mode == MODES.NORMAL:
+            # === INSERT MODE ENTRY ===
+            if key in ('i', 'I', 'a', 'A', 's', 'S', 'o', 'O'):
+                self._move_to_insert_mode(key)
+                event.prevent_default()
+                event.stop()
+                return
+
+            # === NAVIGATION (single keys) ===
+            if key in ('h', 'j', 'k', 'l', 'w', 'b'):
+                self._navigate_cursor(key)
+                event.prevent_default()
+                event.stop()
+                return
+
+            # === VIM COMMANDS ===
+            if self._handle_vim_command(key):
+                event.prevent_default()
+                event.stop()
+                return
+
+            # Unknown normal-mode key → eat it (real vim behaviour)
+            event.prevent_default()
+            event.stop()
+            return
+
+        # ====================== INSERT MODE ======================
+        elif self.mode == MODES.INSERT:
+            if event.key == "escape":          # ← cleaner than tuple
+                self.mode = MODES.NORMAL
+                self.last_keys = ""
+                event.prevent_default()
+                event.stop()
+                return
+
+            # Markdown auto-complete helpers (your original logic)
+            cursor_loc = self.cursor_location
+            lines = self.text.split('\n')
+            current_line = lines[cursor_loc[0]] if cursor_loc[0] < len(lines) else ""
+
+            if key in self.opening_brackets:
+                if not AUTOCOMPLETE: return
+                self._auto_close_brackets_and_quotes(key)
+                event.prevent_default()
+                event.stop()
+                return
+
+            elif key == '*' and cursor_loc[1] > 0 and current_line[cursor_loc[1] - 1] == '*':
+                self.insert("***")
+                self.cursor_location = (cursor_loc[0], cursor_loc[1] + 1)
+                event.prevent_default()
+                event.stop()
+                return
+            elif key == '~' and cursor_loc[1] > 0 and current_line[cursor_loc[1] - 1] == '~':
+                self.insert('~~~')
+                self.cursor_location = (cursor_loc[0], cursor_loc[1] + 1)
+                event.prevent_default()
+                event.stop()
+                return
+            elif key == "`" and cursor_loc[1] > 0 and current_line[cursor_loc[1] - 2:cursor_loc[1]] == "``":
+                self.insert("`\n\n```")
+                self.cursor_location = (cursor_loc[0] + 1, 0)
+                event.prevent_default()
+                event.stop()
+                return
+            elif key in self.closing_brackets:
+                if key == ']':
+                    if cursor_loc[1] > 1 and current_line[cursor_loc[1] - 2:cursor_loc[1]] == '![':
+                        self.move_cursor_relative(columns=+1)
+                        self.insert('()')
+                        self.move_cursor_relative(columns=-3)
+                    else:
+                        self.move_cursor_relative(columns=+1)
+                elif cursor_loc[1] < len(current_line) and current_line[cursor_loc[1]] == key:
+                    self.move_cursor_relative(columns=+1)
+                event.prevent_default()
+                event.stop()
+                return
+
+            # ====================== THIS WAS MISSING ======================
+            # All other keys (a, e, c, p, space, numbers, arrows, Backspace, Enter, etc.)
+            # → let the original TextArea do normal typing/editing
+            super()._on_key(event)
+
+    # ====================== NEW: COMMAND HANDLER ======================
+    def _handle_vim_command(self, key: str) -> bool:
+        """Returns True if the key was consumed as a command."""
+        if not key:          # ← protects against arrows, Backspace, etc.
+            return False
+        self.last_keys += key
+
+        # ====================== SINGLE-KEY COMMANDS ======================
+        if len(self.last_keys) == 1:
+            match self.last_keys:
+                case "x":
+                    self.action_delete_right()
+                case "X":
+                    self.action_delete_left()
+                case "u":
+                    self.action_undo()
+                case "0":
+                    self.action_cursor_line_start()
+                case "$":
+                    self.action_cursor_line_end()
+                case "p":
+                    self._vim_paste(after=True)
+                case "P":
+                    self._vim_paste(after=False)
+                case "G":
+                    self.action_cursor_document_end()
+                case "g":  # wait for second g
+                    return True
+                case _:
+                    #self.last_keys = ""   # unknown single key
+                    return False
+
+            self.last_keys = ""
+            return True
+
+        # ====================== TWO-KEY COMMANDS ======================
+        if len(self.last_keys) == 2:
+            match self.last_keys:
+                case "dd":
+                    self._delete_line()
+                case "yy":
+                    self._yank_line()
+                case "gg":
+                    self.action_cursor_document_start()
+                case "dw":
+                    self._delete_word()
+                case _:
+                    self.last_keys = ""
+                    return False
+
+            self.last_keys = ""
+            return True
+
+        # More than 2 keys → reset (you can extend later)
+        self.last_keys = ""
+        return False
+
+    # ====================== HELPER METHODS ======================
+    def _move_to_insert_mode(self, char: str):
+        match char:
+            case "i": pass
+            case "I": self.action_cursor_line_start()
+            case "a": self.move_cursor_relative(columns=+1)
+            case "A": self.action_cursor_line_end()
+            case "s": self.action_delete_right() if self.text else None
+            case "S": self._delete_line(); self.mode = MODES.INSERT; return
+            case "o":
+                self.action_cursor_line_end()
+                self.insert("\n")
+            case "O":
+                self.action_cursor_line_start()
+                self.insert("\n")
+                self.move_cursor_relative(rows=-1)
+        self.mode = MODES.INSERT
+        self.last_keys = ""
+
+    def _navigate_cursor(self, char: str):
+        self.cursor_blink = False
+        match char:
+            case "h": self.move_cursor_relative(columns=-1)
+            case "j": self.move_cursor_relative(rows=+1)
+            case "k": self.move_cursor_relative(rows=-1)
+            case "l": self.move_cursor_relative(columns=+1)
+            case "w": self.action_cursor_word_right()
+            case "b": self.action_cursor_word_left()
+        self.cursor_blink = True
+
+    def _delete_line(self):
+        """dd - delete current line"""
+        self.action_select_line()
+        self.action_delete_line()
+
+    def _yank_line(self):
+        """yy - yank (copy) current line to system clipboard"""
+        self.action_select_line()
+        if self.selected_text:
+            try:
+                pyperclip.copy(self.selected_text)
+            except Exception:
+                pass
+            self.action_copy()          # also keep internal clipboard
+        self.clear_selection()
+
+    def _vim_paste(self, after: bool = True):
+        """p / P - paste from system clipboard"""
+        try:
+            text = pyperclip.paste()
+            if text:
+                if after:
+                    self.move_cursor_relative(columns=1)   # after cursor
+                self.insert(text)
+        except Exception:
+            pass
+
+    def _delete_word(self):
+        """dw - simple delete word (you can make it more powerful later)"""
+        self.action_cursor_word_right()
+        self.action_delete_left()   # delete the word we just jumped over
+
+    def _auto_close_brackets_and_quotes(self, char: str):
+        """Your original auto-close logic"""
+        match char:
+            case "(": self.insert("()")
+            case "[": self.insert("[]")
+            case "{": self.insert("{}")
+            case "'": self.insert("''")
+            case '"': self.insert('""')
+            case '`': self.insert('``')
+        self.move_cursor_relative(columns=-1)
+
 class MDEditor(App[None]):
     global CUSTOM_THEME
     BINDINGS = [
@@ -1019,7 +1268,8 @@ class MDEditor(App[None]):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Horizontal(id="ui"):
-            yield TextArea(id="editor", tab_behavior="indent", language="markdown")
+            #yield ExtendedTextArea.code_editor(language="python")
+            yield ExtendedTextArea(id="editor", tab_behavior="indent", language="markdown")
             #yield TextArea.code_editor(id="editor", tab_behavior="indent", language="markdown")
             yield Markdown(id="preview")
         # Hidden fullscreen viewer overlay
@@ -1030,6 +1280,21 @@ class MDEditor(App[None]):
     def on_mount(self) -> None:
         # Set theme first
         theme_value = getattr(self, "_requested_theme", config.get("theme", "textual-dark"))
+        editor = self.query_one("#editor", TextArea)
+        editor.cursor_blink = True
+        editor.match_cursor_bracket = True  # This highlights matching brackets
+        self.opening_brackets = {
+        '(': ')',
+        '[': ']',
+        '{': '}',
+        '"': '"',
+        "'": "'",
+        '`': '`',
+        '**': '**',
+        '*': '*',
+        }
+        self.auto_complete_chars = set('([{"\'`*')
+        self.closing_brackets = set(')]}"\'`*')
 
         editor = self.query_one("#editor", TextArea)
         editor.indent_type = "spaces"
@@ -1052,6 +1317,7 @@ class MDEditor(App[None]):
         """Return the current active theme name or .tcss path."""
         return getattr(self, "_custom_theme_path", self.theme)
 
+
     @on(TextArea.Changed)
     def on_text_changed(self, event: TextArea.Changed) -> None:
         """Update cursor position when text changes (includes cursor moves during editing)"""
@@ -1065,7 +1331,7 @@ class MDEditor(App[None]):
         column += 1
         
         footer = self.query_one("#footer", Static)
-        footer.update(f"{line:>3}:{column:<3}|^O[d]:Open[/]|^S[d]:Save[/]|^Shift+S[d]:Save As[/]|^T[d]:Toggle[/]|^J[d]:Sync[/]|^G[d]:Tags[/]|^L[d]:Help[/]|^\\:[d]Options[/]|^Q[d]:Quit[/]")
+        footer.update(f"{line:>3}:{column:<3}|ESC:VIMode|^O[d]:Open[/]|^S[d]:Save[/]|^Shift+S[d]:Save As[/]|^T[d]:Toggle[/]|^J[d]:Sync[/]|^G[d]:Tags[/]|^L[d]:Help[/]|^\\:[d]Options[/]|^Q[d]:Quit[/]")
             
     def load_file(self, filename: str) -> None:
         """Load a file programmatically"""
@@ -1203,6 +1469,7 @@ class MDEditor(App[None]):
             editor.focus()
             
     def _execute_option(self, tag: Optional[str]) -> None:
+        global AUTOCOMPLETE
         if tag == "copyall":
             editor = self.query_one("#editor", TextArea)
             if editor.text:
@@ -1210,6 +1477,8 @@ class MDEditor(App[None]):
                 self.notify("Document copied to system clipboard")
             else:
                 self.notify("No text to copy...")
+        elif tag == 'auto':
+            AUTOCOMPLETE = not AUTOCOMPLETE
         elif tag == "update_preview":
             prestate = self.do_auto_preview
             self.do_auto_preview = True
