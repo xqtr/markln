@@ -16,6 +16,7 @@ from textual.screen import ModalScreen
 from textual.containers import Grid
 from textual.suggester import Suggester
 from textual.screen import Screen
+from textual.binding import Binding
 from textual.widgets import (
     Button,
     Footer,
@@ -33,6 +34,7 @@ from textual.widgets import (
 from enum import Enum
 from textual.events import Key
 from textual.reactive import reactive
+from rich.text import Text
 
 
 PROGRAM_NAME = "MarkLn"
@@ -690,9 +692,35 @@ class ExtendedTextArea(TextArea):
 
     opening_brackets = {'(': ')', '[': ']', '{': '}'}
     closing_brackets = set(')]}')
+    bookmarked_lines = set()
 
     mode: reactive[MODES] = reactive(MODES.INSERT)
     last_keys: reactive[str] = reactive('')          # ← for dd, gg, yy, etc.
+    
+    def toggle_bookmark(self, line_number: int):
+        """Toggle bookmark on a specific line."""
+        if line_number in self.bookmarked_lines:
+            self.bookmarked_lines.remove(line_number)
+        else:
+            self.bookmarked_lines.add(line_number)
+        self.refresh()  # Trigger repaint to show/hide highlight
+    
+    def render_gutter_line(self, line_number: int) -> Text:
+        """Render gutter line with bookmark icon."""
+        line_text = str(line_number + 1)
+        
+        if line_number in self.bookmarked_lines:
+            # Use a star symbol for bookmarked lines
+            return Text(
+                f"★ {line_text:>3} ",  # Star + number
+                style="bold yellow"
+            )
+        else:
+            # Regular line number with some padding
+            return Text(
+                f"  {line_text:>3} ",  # Spaces to align with starred lines
+                style="grey50"
+            )
 
     def watch_mode(self):
         self.border_title = f"{self.mode.value.upper()} {self.last_keys}"
@@ -924,6 +952,7 @@ class ExtendedTextArea(TextArea):
 class MDEditor(App[None]):
     global CUSTOM_THEME
     BINDINGS = [
+        Binding("ctrl+b", "toggle_bookmark", "Toggle Bookmark", priority=True),
         ("ctrl+q", "quit", ""),
         ("ctrl+o", "load_file", ""),
         ("ctrl+s", "save_file", ""),
@@ -938,6 +967,8 @@ class MDEditor(App[None]):
         ("ctrl+g", "markdown_tags", ""),
         ("ctrl+r", "toggle_wrap", ""),
         ("ctrl+backslash", "options", ""),
+        Binding("alt+w", "next_bookmark", "Next Bookmark", priority=True),
+        Binding("alt+q", "prev_bookmark", "Prev. Bookmark", priority=True),
         ("ctrl+l", "help", "")
     ]
     CSS = """
@@ -1781,7 +1812,7 @@ class MDEditor(App[None]):
             self.notify(f"File system error: {e}", severity="error")
         except Exception as e:
             self.notify(f"Error saving file: {e}", severity="error")
-
+    
     def key_ctrl_c(self) -> None:
         """Handle Ctrl+C to copy to system clipboard"""
         editor = self.query_one("#editor", TextArea)
@@ -1795,6 +1826,60 @@ class MDEditor(App[None]):
         # Still let TextArea handle its internal copy
         editor.copy()
 
+    def action_toggle_bookmark(self):
+        """Toggle bookmark at current cursor line."""
+        text_area = self.query_one(ExtendedTextArea)
+        current_line = text_area.cursor_location[0]  # Get current line number
+        text_area.toggle_bookmark(current_line)
+        
+        status = "added to" if current_line in text_area.bookmarked_lines else "removed from"
+        self.notify(f"Bookmark {status} line {current_line + 1}")
+    
+    def action_next_bookmark(self):
+        """Jump to next bookmark."""
+        text_area = self.query_one(ExtendedTextArea)
+        if not text_area.bookmarked_lines:
+            self.notify("No bookmarks")
+            return
+        
+        current_line = text_area.cursor_location[0]
+        
+        # Find next bookmark after current line
+        next_bookmarks = [l for l in sorted(text_area.bookmarked_lines) if l > current_line]
+        
+        if next_bookmarks:
+            target_line = next_bookmarks[0]
+        else:
+            # Wrap around to first bookmark
+            target_line = sorted(text_area.bookmarked_lines)[0]
+        
+        # Move cursor to bookmark line and highlight it
+        text_area.cursor_location = (target_line, 0)
+        # text_area.select_line(target_line)
+    
+    def action_prev_bookmark(self):
+        """Jump to prev bookmark."""
+        text_area = self.query_one(ExtendedTextArea)
+        if not text_area.bookmarked_lines:
+            self.notify("No bookmarks")
+            return
+        
+        current_line = text_area.cursor_location[0]
+        
+        # Find next bookmark after current line
+        next_bookmarks = [l for l in sorted(text_area.bookmarked_lines) if l < current_line]
+        
+        if next_bookmarks:
+            target_line = next_bookmarks[-1]
+        else:
+            # Wrap around to first bookmark
+            target_line = sorted(text_area.bookmarked_lines)[-1]
+        
+        # Move cursor to bookmark line and highlight it
+        text_area.cursor_location = (target_line, 0)
+        # text_area.select_line(target_line)
+
+      
     def key_ctrl_x(self) -> None:
         """Handle Ctrl+X to cut to system clipboard"""
         editor = self.query_one("#editor", TextArea)
@@ -1822,6 +1907,12 @@ class MDEditor(App[None]):
             self.notify(f"Failed to paste from clipboard: {e}", severity="error")
     
     def key_down(self) -> None:
+        """Scroll down when preview is focused"""
+        if self.query_one("#editor").styles.display == "none":
+            pr = self.query_one("#preview_viewer", MarkdownViewer)
+            pr.scroll_down()
+    
+    def key_n(self) -> None:
         """Scroll down when preview is focused"""
         if self.query_one("#editor").styles.display == "none":
             pr = self.query_one("#preview_viewer", MarkdownViewer)
