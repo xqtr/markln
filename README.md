@@ -1,4 +1,4 @@
-# MarkLn v1.3
+# MarkLn v1.3.1
 
 A terminal-based markdown editor built with Textual (Python TUI framework)
 
@@ -10,7 +10,9 @@ A feature-rich markdown editor that runs in the terminal with real-time preview.
 - Dual-pane interface: Edit markdown with live preview
 - Toggle between views (Synced, Editor, Preview)
 - Table of contents, dynamically created
-- Tags selector to insert easily markdown tags (F3)
+- Tags selector to insert easily markdown tags
+- Quick Navigation between headers
+- Supports Bookmark Navigation
 - File management: Open, save, and save-as functionality
 - Keyboard-driven: Fully operable with keyboard shortcuts
 - Full mouse support also
@@ -51,21 +53,34 @@ Clone the repository:
 
 Keyboard shortcuts:
 
-- Tab: Switch between controls
-- Ctrl+O: Open file
-- Ctrl+S: Save file
-- Ctrl+Shift+S: Save as
 - Ctrl+T: Toggle editor/preview
-- Ctrl+L: Show help
-- Ctrl+N: New file
-- Ctrl+R: Toggle Wrap
-- Ctrl+J: Sync Editor with Preview
-- Ctrl+G: Dialog box to insert Markdown Tags
 - Ctrl+Q: Quit
-- Ctrl+\: Options Menu
 - Ctrl+Home: Go to document start
 - Ctrl+End: Go to document end
 - ESC: Goes to VIM Mode (i to return to normal mode)
+- CTRL+B : Toggle Bookmark
+- ALT +Q : Previous Bookmark
+- ALT +W : Next Bookmark
+- ALT+Up : Previous Header
+- ALT+Dn : Next Header
+- CTRL+F : Start Search / ReFocus 
+- CTRL+Y : Close Search Bar
+- CTRL+G : Find Next
+- CTRL+L : Goto Line
+- ALT+I  : Show Document Info
+- CTRL+O : Open File
+- CTRL+N : New Document
+- CTRL+S : Save File
+- CTRL+R : Wrap Document Toggle
+- CTRL+SHIFT+S : Save File As
+- CTRL+J : Sync Preview with Editor
+- ALT+E  : Switch to Editor
+- ALT+P  : Switch to Preview
+- ALT+S  : Swithc to Split View
+- ALT+K  : Show Key Shortcuts
+- CTRL+G : Insert MD TAG
+- CTRL+\ : Options
+- CTRL+L : Help
 
 ### SUPPORTED MARKDOWN
 
@@ -82,6 +97,14 @@ Keyboard shortcuts:
 
 The program can now autocomplete brackets like: []. (), {} 
 It can also complete the bold ** and strike-through ~~ markdown syntax, as well detect an Image link ![] and add the parenthesis.
+
+### QUICK NAVIGATION
+
+From version 1.3.1 you can use Header and Bookmark navigation to move quickly in a file. With bookmarks, you can add a bookmark to any line and use ALT+Q/E keys to go forth or backward, between bookmarks. Using the ALT+UP/DOWN keys, you can navigate between headers, of any level.
+
+### CONVERTING TO HTML
+
+There is also a quick and simple utility for basic conversion of a markdown document to HTML. It uses a Python library, that has been installed, when you installed `MarkLn` so there is no need for extra packages/libs. There are tons of MD converters out there, from which you can chose from. This one included, only for convinience.
 
 ### VIM KEYBINDINGS SUPPORT
 
@@ -159,3 +182,8 @@ This editor is designed for developers who prefer working in the terminal and ne
 **1.3**
 - VIM Keybindings support
 - Autocomplete feature added
+
+**1.3.1**
+- Added Bookmarks Navigation
+- Added Header Navigation
+- Added Find/Search functionality

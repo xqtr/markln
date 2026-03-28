@@ -1,16 +1,18 @@
 #!/usr/bin/python3
 from time import sleep
-import os
+import os, re
 import argparse
 import json
-from typing import Optional
+from typing import Optional, Set
+from textual.strip import Strip
 import pyperclip
 from pathlib import Path
 from textual.theme import Theme
+from rich.style import Style
 from textual import events
 from textual import on, work
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal
+from textual.containers import Container, Horizontal, Vertical
 from textual.scroll_view import ScrollView
 from textual.screen import ModalScreen
 from textual.containers import Grid
@@ -31,6 +33,7 @@ from textual.widgets import (
     TextArea,
     DirectoryTree,
 )
+from textual.geometry import Region
 from enum import Enum
 from textual.events import Key
 from textual.reactive import reactive
@@ -45,6 +48,30 @@ CUSTOM_THEME = None
 AUTOCOMPLETE = True
 
 HELP_MARKDOWN = """\
+# Program Usage
+
+## Keyboard Shortcuts
+
+Press ALT+K for quick access to see all keyboard shortcuts
+
+## Bookmarks
+
+MarkLn, supports bookmarking lines. Toggle a bookmark with CTRL+B and navigate with ALT+Q or W keys. You can only navigate to bookmarks, goind forward or backward. You can't assign a number to a bookmark and call it by that.
+
+## Header Navigation
+
+Pressing the ALT+Up or Down keys, you can navigate through all markdown headers. It doesn't matter which level they are. As long the program will find a header upwards or backwards, will go to that position. This way, you can navigate through sections of your file, quickly.
+
+## Find Text
+
+Pressing CTRL+F, you can enter a string to search. If you toggle the Case Sensitive button, the search will be either case sensitive or not. Press CTRL+G to go to the next occurrance of the search term or press CTRL+Y to close the Search Bar.
+
+## Options
+
+You can enable/disable various usefull options, pressing the CTRL+\ keys. 
+
+---
+
 # Markdown Cheatsheet
 
 ## Text Formatting
@@ -140,19 +167,6 @@ def hello_world():
 
 - [x] Completed task
 - [ ] Incomplete task
-
-### Keyboard Shortcuts
-
-- Ctrl+O - Open file
-- Ctrl+S - Save file
-- Ctrl+Shift+S - Save as
-- Ctrl+L - Show this help
-- Ctrl+N - New File
-- Ctrl+G - Insert Tags
-- Ctrl+J - Sync Views
-- Ctrl+R - Toggle Wrap
-- Ctrl+\\ - Copy all document to clipboard
-- Ctrl+Q - Quit
 
 ### Tips
 
@@ -281,6 +295,7 @@ class OptionsDialog(ModalScreen):
         ("Update Preview", "update_preview"),
         ("Hide Table Of Contents", "treeview"),
         ("Toggle Autocomplete", "auto"),
+        ("Clear Bookmarks", "clsbook"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -334,6 +349,95 @@ class FileSuggester(Suggester):
     async def get_suggestion(self, value: str) -> str | None:
         path = next(Path().glob(f"{value}*"), None)
         return str(path) if path else None
+
+class InfoDialog(ModalScreen):
+    DEFAULT_CSS = """
+    InfoDialog {
+        align: center middle;
+    }
+    
+    InfoDialog > #dialog-container {
+        width: 80%;
+        height: 70%;
+        border: none;
+        background: $surface;
+    }
+    
+    InfoDialog #title-bar {
+        height: 1;
+        border: none;
+        background: $accent 20%;
+        padding: 0 1;
+    }
+    
+    InfoDialog #title-label {
+        width: 1fr;
+        content-align: left middle;
+        text-style: bold;
+    }
+    
+    InfoDialog #text-area {
+        height: 1fr;
+        margin: 1;
+        border: solid $border;
+    }
+    
+    InfoDialog #button-bar {
+        height: 3;
+        align: right middle;
+        margin: 1;
+    }
+    
+    InfoDialog Button {
+        width: 12;
+        margin: 0 1;
+    }
+    """
+    
+    def __init__(
+        self, 
+        content: str, 
+        title: str = "Information", 
+        read_only: bool = True,
+        width: int = 80,
+        height: int = 70
+    ):
+        
+        super().__init__()
+        self.content = content
+        self.dialog_title = title
+        self.read_only = read_only
+        self.width = width
+        self.height = height
+    
+    def compose(self) -> ComposeResult:
+        """Create child widgets."""
+        # Update CSS with dynamic dimensions
+        with Vertical(id="dialog-container"):
+            with Horizontal(id="title-bar"):
+                yield Label(self.dialog_title, id="title-label")
+            
+            yield TextArea(
+                self.content, 
+                id="text-area", 
+                read_only=self.read_only
+            )
+            
+            with Horizontal(id="button-bar"):
+                yield Button("Close", id="close-button", variant="primary")
+                yield Button("Copy", id="copy-button", variant="default")
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        if event.button.id == "close-button":
+            self.dismiss()
+        elif event.button.id == "copy-button":
+            self._copy_to_clipboard()
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle key presses."""
+        if event.key == "escape":
+            self.dismiss()
 
 class HelpScreen(Screen):
     def __init__(self) -> None:
@@ -685,17 +789,185 @@ class MODES(str, Enum):
     NORMAL = 'normal'
     VISUAL = 'visual'
     INSERT = 'insert'
+
+class GotoLineDialog(ModalScreen):
+    """Simple dialog to input line number"""
     
+    DEFAULT_CSS = """
+    GotoLineDialog {
+        align: center middle;
+    }
+    
+    #goto-dialog {
+        grid-size: 1;
+        grid-rows: 2 5 5;
+        padding: 1;
+        width: 40;
+        height: 15;
+        border: solid $accent;
+        background: $surface;
+        background-tint: $background;
+    }
+    
+    #goto-title {
+        height: 1;
+        width: 100%;
+        content-align: center middle;
+        text-style: bold;
+        color: $text;
+        border: none;
+    }
+    
+    #line-input {
+        width: 100%;
+        margin-bottom: 1;
+        border: solid $primary;
+        height: 3;
+    }
+    
+    #goto-dialog Horizontal {
+        width: 100%;
+        align: center middle;
+        height: auto;
+        margin-top: 1;
+    }
+    
+    #goto-dialog Button {
+        width: 10;
+        margin: 0 1;
+        height: 3;
+    }
+    """
+    
+    def compose(self) -> ComposeResult:
+        yield Grid(
+            Static("Go to line:", id="goto-title"),
+            Input(placeholder="Enter line number...", id="line-input"),
+            Horizontal(
+                Button("Go", variant="primary", id="go"),
+#                Button("Cancel", id="cancel"),
+            ),
+            id="goto-dialog"
+        )
+    
+    def on_mount(self) -> None:
+        self.query_one("#line-input").focus()
+    
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self._go_to_line(event.value)
+    
+    @on(Button.Pressed, "#go")
+    def go_pressed(self) -> None:
+        line_input = self.query_one("#line-input", Input)
+        self._go_to_line(line_input.value)
+    
+    def _go_to_line(self, value: str) -> None:
+        try:
+            line_num = int(value.strip()) - 1  # Convert to 0-indexed
+            if line_num >= 0:
+                self.dismiss(line_num)
+            else:
+                self.bell()
+        except ValueError:
+            self.notify("Invalid Value!")
+    
+    @on(Button.Pressed, "#cancel")
+    def cancel_pressed(self) -> None:
+        self.dismiss(None)
+    
+    def key_escape(self) -> None:
+        self.dismiss(None)
 
 class ExtendedTextArea(TextArea):
     """A subclass of TextArea with parenthesis-closing + full VIM keybindings."""
 
     opening_brackets = {'(': ')', '[': ']', '{': '}'}
     closing_brackets = set(')]}')
-    bookmarked_lines = set()
+    
 
     mode: reactive[MODES] = reactive(MODES.INSERT)
     last_keys: reactive[str] = reactive('')          # ← for dd, gg, yy, etc.
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Regex to match markdown headers (1-6 # symbols followed by space)
+        self.bookmarked_lines = set()
+        self.header_pattern = re.compile(r'^#{1,6}\s+')
+    
+    def find_previous_header(self, current_line: int) -> Optional[int]:
+        """Find the nearest header above the current line.
+        
+        Args:
+            current_line: Current cursor line number (0-indexed)
+            
+        Returns:
+            Line number of previous header, or None if not found
+        """
+        lines = self.text.splitlines()
+        
+        # Search upwards from current_line - 1 down to 0
+        for line_num in range(current_line - 1, -1, -1):
+            if line_num < len(lines) and self.header_pattern.match(lines[line_num]):
+                return line_num
+        
+        return None
+    
+    def find_next_header(self, current_line: int) -> Optional[int]:
+        """Find the nearest header below the current line.
+        
+        Args:
+            current_line: Current cursor line number (0-indexed)
+            
+        Returns:
+            Line number of next header, or None if not found
+        """
+        lines = self.text.splitlines()
+        
+        # Search downwards from current_line + 1 to end
+        for line_num in range(current_line + 1, len(lines)):
+            if self.header_pattern.match(lines[line_num]):
+                return line_num
+        
+        return None
+    
+    def navigate_to_header(self, direction: str) -> bool:
+        """Navigate to previous or next header."""
+        current_line = self.cursor_location[0]
+        
+        if direction == "prev":
+            target_line = self.find_previous_header(current_line)
+        else:
+            target_line = self.find_next_header(current_line)
+        
+        if target_line is not None:
+            # Move cursor to the target line
+            self.cursor_location = (target_line, 0)
+            
+            # Scroll to make the line visible using scroll_to_region with proper coordinates
+            # Get the virtual coordinates of the target line
+            #scroll_x = self.scroll_x
+            #scroll_y = self.get_line_top(target_line)
+            
+            #self.scroll_to(x=scroll_x, y=scroll_y, animate=False)
+            
+            return True
+        
+        return False
+    
+    def _jump_to_line(self, line_number: int) -> None:
+        """Jump to a specific line and scroll it into view."""
+        # Move cursor to the start of the line
+        self.cursor_location = (line_number, 0)
+        
+        # Scroll to make the line visible
+        self.scroll_to_line(line_number)
+        
+        # Optional: Briefly highlight the line by selecting it
+        from textual.widgets.text_area import Selection
+        self.selection = Selection(start=(line_number, 0), end=(line_number + 1, 0))
+        
+        # Clear selection after a brief moment (optional)
+        self.set_timer(0.5, lambda: setattr(self, 'selection', None))
     
     def toggle_bookmark(self, line_number: int):
         """Toggle bookmark on a specific line."""
@@ -703,24 +975,105 @@ class ExtendedTextArea(TextArea):
             self.bookmarked_lines.remove(line_number)
         else:
             self.bookmarked_lines.add(line_number)
-        self.refresh()  # Trigger repaint to show/hide highlight
+        #self.refresh()  # Trigger repaint to show/hide highlight
+        self.refresh(layout=True)
     
-    def render_gutter_line(self, line_number: int) -> Text:
-        """Render gutter line with bookmark icon."""
-        line_text = str(line_number + 1)
+
+    # def render_line(self, y: int) -> Strip:
+        # """Render line with highlighting for bookmarked document lines."""
+        # strip = super().render_line(y)
         
-        if line_number in self.bookmarked_lines:
-            # Use a star symbol for bookmarked lines
-            return Text(
-                f"★ {line_text:>3} ",  # Star + number
-                style="bold yellow"
+        # # Get the actual document line number at this visual position
+        # # The y parameter is the visual line index, but we need the document line
+        # document_line = self.get_line(y)
+        
+        # if document_line is not None and document_line in self.bookmarked_lines:
+            # return strip.apply_style(Style(reverse=True))
+        
+        
+        # return strip
+    
+    def _render_line_numbers(self) -> list[Text]:
+        lines = self.text.splitlines()
+        gutter = []
+        print("GUTTER")
+        for i, line in enumerate(lines):
+            is_header = bool(self.header_pattern.match(line))
+            is_bookmark = i in self.bookmarked_lines
+
+            symbol = "  "
+            style = "grey50"
+
+            if is_header and is_bookmark:
+                symbol = "◆★"
+                style = "bold magenta"
+            elif is_header:
+                symbol = "◆ "
+                style = "bold cyan"
+            elif is_bookmark:
+                symbol = "★ "
+                style = "bold yellow"
+
+            gutter.append(Text(f"{symbol}{i+1:>3} ", style=style))
+
+        return gutter
+        
+    def _render_gutter(self) -> list[Text]:
+        lines = self.text.splitlines()
+        gutter = []
+
+        for i in range(len(lines)):
+            line = lines[i]
+
+            is_header = bool(self.header_pattern.match(line))
+            is_bookmark = i in self.bookmarked_lines
+
+            symbol = "  "
+            style = "grey50"
+
+            if is_header and is_bookmark:
+                symbol = "◆★"
+                style = "bold magenta"
+            elif is_header:
+                symbol = "◆ "
+                style = "bold cyan"
+            elif is_bookmark:
+                symbol = "★ "
+                style = "bold yellow"
+
+            gutter.append(
+                Text(f"{symbol}{i+1:>3} ", style=style)
             )
+
+        return gutter
+        
+    def get_gutter_text(self, line_number: int) -> Text:
+#    def render_gutter_line(self, line_number: int) -> Text:
+        lines = self.text.splitlines()
+        line = lines[line_number] if line_number < len(lines) else ""
+
+        is_header = bool(self.header_pattern.match(line))
+        is_bookmark = line_number in self.bookmarked_lines
+
+        # === SYMBOL LOGIC ===
+        symbol = "  "  # default spacing
+
+        if is_header and is_bookmark:
+            symbol = "◆★"   # both
+            style = "bold magenta"
+        elif is_header:
+            symbol = "◆ "   # header
+            style = "bold cyan"
+        elif is_bookmark:
+            symbol = "★ "   # bookmark
+            style = "bold yellow"
         else:
-            # Regular line number with some padding
-            return Text(
-                f"  {line_text:>3} ",  # Spaces to align with starred lines
-                style="grey50"
-            )
+            style = "grey50"
+
+        return Text(
+            f"{symbol}{line_number + 1:>3} ",
+            style=style
+        )
 
     def watch_mode(self):
         self.border_title = f"{self.mode.value.upper()} {self.last_keys}"
@@ -952,7 +1305,11 @@ class ExtendedTextArea(TextArea):
 class MDEditor(App[None]):
     global CUSTOM_THEME
     BINDINGS = [
-        Binding("ctrl+b", "toggle_bookmark", "Toggle Bookmark", priority=True),
+        Binding("ctrl+b", "toggle_bookmark", "", priority=True),
+        Binding("alt+i", "show_info", "", priority=True),
+        Binding("alt+k", "show_keys", "", priority=True),
+        Binding("alt+up", "previous_header", "", tooltip="Navigate to previous header"),
+        Binding("alt+down", "next_header", "", tooltip="Navigate to next header"),
         ("ctrl+q", "quit", ""),
         ("ctrl+o", "load_file", ""),
         ("ctrl+s", "save_file", ""),
@@ -964,24 +1321,36 @@ class MDEditor(App[None]):
         ("end", "scroll_end", ""),
         ("ctrl+home", "edit_scroll_home", ""),
         ("ctrl+end", "edit_scroll_end", ""),
-        ("ctrl+g", "markdown_tags", ""),
+        ("alt+g", "markdown_tags", ""),
         ("ctrl+r", "toggle_wrap", ""),
         ("ctrl+backslash", "options", ""),
-        Binding("alt+w", "next_bookmark", "Next Bookmark", priority=True),
-        Binding("alt+q", "prev_bookmark", "Prev. Bookmark", priority=True),
-        ("ctrl+l", "help", "")
+        Binding("ctrl+l", "goto_line", "", priority=True), 
+        Binding("alt+w", "next_bookmark", "", priority=True),
+        Binding("alt+q", "prev_bookmark", "", priority=True),
+        Binding("alt+h", "help", "", priority=True),
+        Binding("alt+e", "select_editor", "", priority=True),
+        Binding("alt+p", "select_preview", "", priority=True),
+        Binding("alt+s", "select_split", "", priority=True),
+        Binding("ctrl+y", "resetfind", "", priority=True),
+        Binding("ctrl+f", "focus_search", "Search", priority=True),
+        Binding("ctrl+g", "find_next", "Next", priority=True),
+        Binding("ctrl+shift+g", "find_prev", "Prev", priority=True),
     ]
     CSS = """
     Screen {
         layout: vertical;
     }
     
-     .footer {
+    .footer {
         height: 1;
         padding: 0 1;
         background: $surface;
         color: $text;
         /* text-style: bold; */
+    }
+    
+    .footer.hidden {
+        display: none;
     }
     
     #tags-dialog {
@@ -1069,6 +1438,7 @@ class MDEditor(App[None]):
         width: 100%;
         height: 100%;
     }
+    
     
     #buttons_container {
         height: auto;
@@ -1274,7 +1644,27 @@ class MDEditor(App[None]):
     #filename  {
         border: blank;
     }
-       
+    
+    #case_toggle {
+      width: 8;
+      align: right middle;
+    }
+    
+    #search_bar {
+        height: 3;
+        border: none;
+        background: $panel;
+    }
+
+    #search_input {
+        width: 1fr;
+        height: 3;
+    }
+    
+    #search_bar.hidden {
+        display: none;
+    }
+    
     """
 
     current_file: Optional[str] = None
@@ -1282,6 +1672,11 @@ class MDEditor(App[None]):
     _preview_update_scheduled = False
     _original_content: str = ""  # Track original content to detect changes
     _has_unsaved_changes: bool = False  # Track if there are unsaved changes
+    
+    search_term: str = ""
+    search_index: int = 0
+    last_match: Optional[int] = None
+    case_sensitive: bool = False
 
     def __init__(self, initial_file: Optional[str] = None, theme: str = "dark") -> None:
         super().__init__()
@@ -1306,6 +1701,11 @@ class MDEditor(App[None]):
         # Hidden fullscreen viewer overlay
         yield MarkdownViewer(id="preview_viewer", show_table_of_contents=True, classes="hidden")
         #yield CustomFooter()
+        
+        with Horizontal(id="search_bar", classes="hidden"):
+            yield Input(placeholder="Search...", id="search_input")
+            yield Button("case", id="case_toggle")
+        
         yield Static(id="footer", classes="footer")  # Use Static instead of Footer
 
     def on_mount(self) -> None:
@@ -1344,10 +1744,118 @@ class MDEditor(App[None]):
         self.update_cursor_position()
         self.action_toggle_editor()
 
+    def _get_text(self):
+        return self.query_one("#editor", TextArea).text
+
+    def _get_cursor_index(self):
+        editor = self.query_one("#editor", TextArea)
+        lines = editor.text.split("\n")
+        row, col = editor.cursor_location
+        return sum(len(lines[i]) + 1 for i in range(row)) + col
+
+    def _index_to_location(self, index: int):
+        text = self._get_text()
+        before = text[:index]
+
+        row = before.count("\n")
+        col = len(before.split("\n")[-1])
+
+        return (row, col)
+        
+    def _set_cursor_index(self, index: int):
+        editor = self.query_one("#editor", TextArea)
+        text = editor.text
+
+        before = text[:index]
+        row = before.count("\n")
+        col = len(before.split("\n")[-1])
+
+        editor.cursor_location = (row, col)
+
+        # 👇 highlight match
+        if self.search_term:
+            length = len(self.search_term)
+            editor.selection = (
+                (row, col),
+                self._index_to_location(index + length)
+            )
+
+        editor.scroll_to(y=row, animate=False)
+
     def get_active_theme(self) -> str:
         """Return the current active theme name or .tcss path."""
         return getattr(self, "_custom_theme_path", self.theme)
 
+    def action_find_next(self):
+        term = self.search_term
+        if not term:
+            return
+
+        text = self._get_text()
+        start = self._get_cursor_index() + 1
+
+        if not self.case_sensitive:
+            text = text.lower()
+            term = term.lower()
+
+        pos = text.find(term, start)
+
+        if pos == -1:
+            pos = text.find(term, 0)
+
+        if pos != -1:
+            self._set_cursor_index(pos)
+            self.last_match = pos
+
+        # 🔥 return focus to editor
+        self.query_one("#editor").focus()
+
+    def action_focus_search(self):
+        bar = self.query_one("#search_bar")
+        bar.remove_class("hidden")
+        
+        footer = self.query_one("#footer")
+        footer.add_class("hidden")
+
+        input_box = self.query_one("#search_input", Input)
+        input_box.value = self.search_term
+        input_box.focus()
+        input_box.select_all()
+
+    def action_find_prev(self):
+        term = self.search_term
+        if not term:
+            return
+
+        text = self._get_text()
+        start = self._get_cursor_index() - 1
+
+        if not self.case_sensitive:
+            text = text.lower()
+            term = term.lower()
+
+        pos = text.rfind(term, 0, start)
+
+        if pos == -1:
+            pos = text.rfind(term)
+
+        if pos != -1:
+            self._set_cursor_index(pos)
+            self.last_match = pos
+
+        # 🔥 return focus
+        self.query_one("#editor").focus()
+        
+    @on(Input.Changed, "#search_input")
+    def update_search(self, event: Input.Changed):
+        self.search_term = event.value
+        self.last_match = None
+    
+    @on(Button.Pressed, "#case_toggle")
+    def toggle_case(self):
+        self.case_sensitive = not self.case_sensitive
+        btn = self.query_one("#case_toggle", Button)
+        btn.label = "Case Sens." if self.case_sensitive else "Case Ins."
 
     @on(TextArea.Changed)
     def on_text_changed(self, event: TextArea.Changed) -> None:
@@ -1362,7 +1870,7 @@ class MDEditor(App[None]):
         column += 1
         
         footer = self.query_one("#footer", Static)
-        footer.update(f"{line:>3}:{column:<3}|ESC:VIMode|^O[d]:Open[/]|^S[d]:Save[/]|^Shift+S[d]:Save As[/]|^T[d]:Toggle[/]|^J[d]:Sync[/]|^G[d]:Tags[/]|^L[d]:Help[/]|^\\:[d]Options[/]|^Q[d]:Quit[/]")
+        footer.update(f"{line:>3}:{column:<3}|ESC[d]:VIMode[/]|ALT+K[d]:Keys[/]|CTRL+G[d]:Tags[/]|ALT+H[d]:Help[/]|CTRL+\\:[d]Options[/]|^Q[d]:Quit[/]")
             
     def load_file(self, filename: str) -> None:
         """Load a file programmatically"""
@@ -1510,6 +2018,10 @@ class MDEditor(App[None]):
                 self.notify("No text to copy...")
         elif tag == 'auto':
             AUTOCOMPLETE = not AUTOCOMPLETE
+        elif tag == 'clsbook':
+            text_area = self.query_one(ExtendedTextArea)
+            text_area.bookmarked_lines.clear()
+            self.notify("Bookmarks Cleared!")
         elif tag == "update_preview":
             prestate = self.do_auto_preview
             self.do_auto_preview = True
@@ -1601,7 +2113,103 @@ class MDEditor(App[None]):
             #self.notify(f"Synced preview to ~line {cursor_line + 1}")
         
         self.call_after_refresh(_perform_sync)
+    
+    def action_goto_line(self) -> None:
+        """Show dialog to go to a specific line number"""
+        def goto_callback(line_num):
+            if line_num is not None:
+                editor = self.query_one("#editor", TextArea)
+                lines = editor.text.split("\n")
+                if 0 <= line_num < len(lines):
+                    # Move cursor to line
+                    editor.cursor_location = (line_num, 0)
+                    # Scroll to make it visible
+                    editor.scroll_to(y=line_num)
+                    #editor.scroll_to_line(line_num)
+                    # Briefly highlight the line
+                    #from textual.widgets.text_area import Selection
+                    #editor.selection = Selection(
+                    #    start=(line_num, 0), 
+                    #    end=(line_num + 1, 0)
+                    #)
+                    # Clear selection after a moment
+                    #self.set_timer(0.5, lambda: setattr(editor, 'selection', None))
+                    #self.notify(f"Jumped to line {line_num + 1}")
+                else:
+                    self.notify(f"Line {line_num + 1} out of range (1-{len(lines)})", severity="error")
         
+        self.push_screen(GotoLineDialog(), callback=goto_callback)
+        
+    def action_show_info(self):
+        """Show an information dialog."""
+        editor = self.query_one("#editor", TextArea)
+        lines = editor.text.split("\n")
+        
+        info_text = f"Total Lines: {len(lines)}"
+        info_text += f"Words: {len(editor.text.split(' '))}"
+        
+        dialog = InfoDialog(
+            info_text, 
+            title="Document Information",
+            read_only=True,
+            width=75,
+            height=65
+        )
+        self.push_screen(dialog)
+      
+    def action_show_keys(self):
+        keys = """
+BookMarks
+---------
+CTRL+B : Toggle Bookmark
+ALT +Q : Previous Bookmark
+ALT +W : Next Bookmark
+
+Headers
+-------
+ALT+Up : Previous Header
+ALT+Dn : Next Header
+
+Search
+------
+CTRL+F : Start Search / ReFocus 
+CTRL+Y : Close Search Bar
+CTRL+G : Find Next
+CTRL+L : Goto Line
+
+Document
+-------
+ALT+I  : Show Document Info
+CTRL+O : Open File
+CTRL+N : New Document
+CTRL+S : Save File
+CTRL+R : Wrap Document Toggle
+CTRL+SHIFT+S : Save File As
+
+View
+----
+CTRL+J : Sync Preview with Editor
+ALT+E  : Switch to Editor
+ALT+P  : Switch to Preview
+ALT+S  : Swithc to Split View
+
+Various
+-------
+ALT+K  : Show Key Shortcuts
+CTRL+G : Insert MD TAG
+CTRL+\ : Options
+CTRL+L : Help
+        """       
+        
+        dialog = InfoDialog(
+            keys, 
+            title="Keys",
+            read_only=True,
+            width=75,
+            height=65
+        )
+        self.push_screen(dialog)
+    
     def action_edit_scroll_end(self) -> None:
         """Scroll to the bottom"""
         editor = self.query_one("#editor", TextArea)
@@ -1611,10 +2219,25 @@ class MDEditor(App[None]):
             last_column = len(lines[-1]) if lines else 0
             editor.cursor_location = (last_line, last_column)
             editor.scroll_end()
-
+    
+    def action_select_editor(self) -> None:
+        self.current_view_state = 1
+        self.action_toggleselect_editor()
+    
+    def action_select_preview(self) -> None:
+        self.current_view_state = 2
+        self.action_toggleselect_editor()
+    
+    def action_select_split(self) -> None:
+        self.current_view_state = 0
+        self.action_toggleselect_editor()
+        
     def action_toggle_editor(self) -> None:
-        """Cycle: split -> editor-only -> preview-only (overlay MarkdownViewer) -> split."""
         self.current_view_state = (self.current_view_state + 1) % 3
+        self.action_toggleselect_editor()
+        
+    def action_toggleselect_editor(self) -> None:
+        """Cycle: split -> editor-only -> preview-only (overlay MarkdownViewer) -> split."""
 
         editor = self.query_one("#editor")
         preview = self.query_one("#preview")      # lightweight Markdown
@@ -1813,6 +2436,33 @@ class MDEditor(App[None]):
         except Exception as e:
             self.notify(f"Error saving file: {e}", severity="error")
     
+    @on(Input.Submitted, "#search_input")
+    def submit_search(self, event: Input.Submitted):
+        self.search_term = event.value
+
+        # 🔥 start search from current cursor (or reset if you prefer)
+        self.last_match = None
+
+        # go to first match
+        self.action_find_next()
+    
+    def action_resetfind(self):
+        bar = self.query_one("#search_bar")
+
+        if not bar.has_class("hidden"):
+            bar.add_class("hidden")
+            self.query_one("#editor").focus()
+            
+            editor = self.query_one("#editor", TextArea)
+            cursor = editor.cursor_location
+            editor.selection = (cursor, cursor)
+            editor.focus()
+
+        footer = self.query_one("#footer")
+        if  footer.has_class("hidden"):
+            footer.remove_class("hidden")
+            
+    
     def key_ctrl_c(self) -> None:
         """Handle Ctrl+C to copy to system clipboard"""
         editor = self.query_one("#editor", TextArea)
@@ -1879,7 +2529,20 @@ class MDEditor(App[None]):
         text_area.cursor_location = (target_line, 0)
         # text_area.select_line(target_line)
 
-      
+    def action_previous_header(self) -> None:
+        """Navigate to previous header."""
+        text_area = self.query_one(ExtendedTextArea)
+        text_area.navigate_to_header("prev")
+        #if not text_area.navigate_to_header("prev"):
+        #    self.notify("No header above", severity="warning")
+    
+    def action_next_header(self) -> None:
+        """Navigate to next header."""
+        text_area = self.query_one(ExtendedTextArea)
+        text_area.navigate_to_header("next")
+        #if not text_area.navigate_to_header("next"):
+            #self.notify("No header below", severity="warning")
+            
     def key_ctrl_x(self) -> None:
         """Handle Ctrl+X to cut to system clipboard"""
         editor = self.query_one("#editor", TextArea)
