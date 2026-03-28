@@ -41,7 +41,7 @@ from rich.text import Text
 
 
 PROGRAM_NAME = "MarkLn"
-PROGRAM_VERSION = "1.3"
+PROGRAM_VERSION = "1.3.1"
 CONFIG_DIR = Path.home() / ".config/markln"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 CUSTOM_THEME = None
