@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 from time import sleep
-from spellchecker import SpellChecker
 import os, re
 import argparse
 import json
@@ -40,7 +39,6 @@ from textual.events import Key
 from textual.reactive import reactive
 from rich.text import Text
 
-spell = SpellChecker()
 
 PROGRAM_NAME = "MarkLn"
 PROGRAM_VERSION = "1.3.1"
@@ -791,109 +789,6 @@ class MODES(str, Enum):
     NORMAL = 'normal'
     VISUAL = 'visual'
     INSERT = 'insert'
-    
-class SuggestionPopup(ModalScreen):
-    BINDINGS = [
-        Binding("escape", "close"),
-        Binding("home", "go_top"),
-        Binding("end", "go_bottom"),
-    ]
-
-    CSS = """
-    SuggestionPopup {
-        align: center middle;
-    }
-
-    #box {
-        width: 24;
-        border: solid white;
-        background: $panel;
-        height: 10;
-    }
-
-    Input {
-        height: 1;
-        border: none;
-    }
-
-    ListView {
-        max-height: 10;
-    }
-    """
-
-    def __init__(self, word, suggestions, callback):
-        super().__init__()
-        self.all_suggestions = suggestions
-        self.filtered = suggestions[:]
-        self.callback = callback
-        self.word = word
-
-    def compose(self):
-        self.input = Input(placeholder="Filter...")
-        self.lv = ListView()
-
-        yield Vertical(
-            self.input,
-            self.lv,
-            id="box"
-        )
-
-    def on_mount(self):
-        self.input.focus()
-        self.update_list()
-
-    # -------------------------
-    # Filtering logic
-    # -------------------------
-    def on_input_changed(self, event: Input.Changed):
-        query = event.value.lower()
-
-        if not query:
-            self.filtered = self.all_suggestions[:]
-        else:
-            self.filtered = [
-                w for w in self.all_suggestions
-                if query in w.lower()
-            ]
-
-        self.update_list()
-
-
-    def update_list(self):
-        self.lv.clear()
-        for word in self.filtered:
-            item = ListItem(Label(word))
-            item.word = word  # attach the word
-            self.lv.append(item)
-        if self.filtered:
-            self.lv.index = 0
-
-    # -------------------------
-    # Selection
-    # -------------------------
-    def on_list_view_selected(self, event: ListView.Selected):
-        # Each ListItem now has a 'word' attribute attached
-        selected_word = getattr(event.item, "word", None)
-        if selected_word:
-            self.callback(selected_word)
-        self.dismiss()
-
-    # -------------------------
-    # Navigation
-    # -------------------------
-    def action_go_top(self):
-        if self.lv.children:
-            self.lv.index = 0
-            self.lv.scroll_to_index(0)
-
-    def action_go_bottom(self):
-        if self.lv.children:
-            last = len(self.lv.children) - 1
-            self.lv.index = last
-            self.lv.scroll_to_index(last)
-
-    def action_close(self):
-        self.dismiss()
 
 class GotoLineDialog(ModalScreen):
     """Simple dialog to input line number"""
@@ -1436,7 +1331,6 @@ class MDEditor(App[None]):
         Binding("alt+e", "select_editor", "", priority=True),
         Binding("alt+p", "select_preview", "", priority=True),
         Binding("alt+s", "select_split", "", priority=True),
-        Binding("alt+c", "spell_check", "", priority=True),
         Binding("ctrl+y", "resetfind", "", priority=True),
         Binding("ctrl+f", "focus_search", "Search", priority=True),
         Binding("ctrl+g", "find_next", "Next", priority=True),
@@ -1774,7 +1668,6 @@ class MDEditor(App[None]):
     """
 
     current_file: Optional[str] = None
-    current_mode: Optional[str] = 'split'
     current_view_state: int = 0  # 0: split, 1: editor-only, 2: preview-only
     _preview_update_scheduled = False
     _original_content: str = ""  # Track original content to detect changes
@@ -1791,7 +1684,6 @@ class MDEditor(App[None]):
         self._requested_theme = theme  # Store requested theme, don't set self.theme directly
         self.title = f"{PROGRAM_NAME} v{PROGRAM_VERSION} :: Untitled"
         self.current_file: Optional[str] = None
-        self.current_mode: Optional[str] = 'split'
         self._preview_update_scheduled = False
         self._original_content: str = ""
         self.do_auto_preview = True
@@ -2303,7 +2195,6 @@ ALT+S  : Swithc to Split View
 
 Various
 -------
-ALT+C  : Check word for misspeling
 ALT+K  : Show Key Shortcuts
 CTRL+G : Insert MD TAG
 CTRL+\ : Options
@@ -2328,94 +2219,21 @@ CTRL+L : Help
             last_column = len(lines[-1]) if lines else 0
             editor.cursor_location = (last_line, last_column)
             editor.scroll_end()
-
-    def get_current_word(self):
-        editor = self.query_one("#editor", TextArea)
-
-        row, col = editor.cursor_location
-        lines = editor.text.splitlines()
-
-        if row >= len(lines):
-            return "", 0, 0
-
-        line = lines[row]
-
-        left = col
-        right = col
-
-        # Expand left
-        while left > 0 and line[left - 1].isalnum():
-            left -= 1
-
-        # Expand right
-        while right < len(line) and line[right].isalnum():
-            right += 1
-
-        word = line[left:right]
-
-        return word, row, left, right
-
-    def replace_word(self, new_word, row, start_col, end_col):
-        editor = self.query_one("#editor", TextArea)
-        lines = editor.text.splitlines()
-
-        line = lines[row]
-        lines[row] = line[:start_col] + new_word + line[end_col:]
-
-        editor.text = "\n".join(lines)
-        editor.cursor_location = (row, start_col + len(new_word))
-
-    # -------------------------
-    # Action triggered by Alt+C
-    # -------------------------
-    def action_spell_check(self):
-        word, row, start, end = self.get_current_word()
-
-        if not word:
-            return
-
-        # Check spelling
-        if word.lower() in spell:
-            self.notify(f"'{word}' is correct. No suggestions")
-            return
-
-        suggestions = list(spell.candidates(word))
-
-        if not suggestions:
-            self.notify("No suggestions found!")
-            return
-
-        # Show popup
-        self.push_screen(
-            SuggestionPopup(word,
-                suggestions,
-                lambda w: self.replace_word(w, row, start, end)
-            )
-        )
     
     def action_select_editor(self) -> None:
         self.current_view_state = 1
-        self.current_mode = "editor"
         self.action_toggleselect_editor()
     
     def action_select_preview(self) -> None:
         self.current_view_state = 2
-        self.current_mode = "preview"
         self.action_toggleselect_editor()
     
     def action_select_split(self) -> None:
         self.current_view_state = 0
-        self.current_mode = "split"
         self.action_toggleselect_editor()
         
     def action_toggle_editor(self) -> None:
         self.current_view_state = (self.current_view_state + 1) % 3
-        if self.current_view_state == 1:
-            self.current_mode = "editor"
-        elif self.current_view_state == 2:
-            self.current_mode = "preview"
-        elif self.current_view_state == 0:
-            self.current_mode = "split"
         self.action_toggleselect_editor()
         
     def action_toggleselect_editor(self) -> None:
@@ -2832,5 +2650,4 @@ if __name__ == "__main__":
     # Save current theme and last file when exiting
     config["theme"] = app.get_active_theme()
     config["last_file"] = app.current_file
-    config["window_mode"] = app.current_mode
     save_config(config)
