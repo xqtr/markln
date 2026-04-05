@@ -987,6 +987,7 @@ class ExtendedTextArea(TextArea):
     """A subclass of TextArea with parenthesis-closing + full VIM keybindings."""
 
     opening_brackets = {'(': ')', '[': ']', '{': '}'}
+    _opening_brackets = {'([{'}
     closing_brackets = set(')]}')
     
 
@@ -1234,7 +1235,10 @@ class ExtendedTextArea(TextArea):
             current_line = lines[cursor_loc[0]] if cursor_loc[0] < len(lines) else ""
 
             if key in self.opening_brackets:
-                if not AUTOCOMPLETE: return
+                if not AUTOCOMPLETE: 
+                    # If autocomplete is disabled, just insert the character normally
+                    super()._on_key(event)
+                    return
                 self._auto_close_brackets_and_quotes(key)
                 event.prevent_default()
                 event.stop()
@@ -1259,18 +1263,29 @@ class ExtendedTextArea(TextArea):
                 event.stop()
                 return
             elif key in self.closing_brackets:
-                if key == ']':
-                    if cursor_loc[1] > 1 and current_line[cursor_loc[1] - 2:cursor_loc[1]] == '![':
-                        self.move_cursor_relative(columns=+1)
-                        self.insert('()')
-                        self.move_cursor_relative(columns=-3)
-                    else:
-                        self.move_cursor_relative(columns=+1)
-                elif cursor_loc[1] < len(current_line) and current_line[cursor_loc[1]] == key:
+                if cursor_loc[1] < len(current_line) and current_line[cursor_loc[1]] == key:
+                    # Skip over the existing closing bracket
                     self.move_cursor_relative(columns=+1)
-                event.prevent_default()
-                event.stop()
-                return
+                    event.prevent_default()
+                    event.stop()
+                    return
+                else:
+                    # No matching closing bracket exists, so just insert the character normally
+                    super()._on_key(event)
+                    return
+                # if key == ']':
+                    # if cursor_loc[1] > 1 and current_line[cursor_loc[1] - 2:cursor_loc[1]] == '![':
+                        # self.move_cursor_relative(columns=+1)
+                        # self.insert('()')
+                        # self.move_cursor_relative(columns=-3)
+                    # else:
+                        # self.move_cursor_relative(columns=+1)
+                # elif cursor_loc[1] < len(current_line) and current_line[cursor_loc[1]] == key:
+                    # self.move_cursor_relative(columns=+1)
+
+                # event.prevent_default()
+                # event.stop()
+                # return
 
             # ====================== THIS WAS MISSING ======================
             # All other keys (a, e, c, p, space, numbers, arrows, Backspace, Enter, etc.)
@@ -1995,7 +2010,14 @@ class MDEditor(App[None]):
                 self.title = f"{PROGRAM_NAME} v{PROGRAM_VERSION} :: {file_path.name}"
                 self.notify(f"Loaded {file_path.name}")
             else:
-                self.notify(f"File not found: {filename}", severity="error")
+                # Set up for a new file without creating it yet
+                editor = self.query_one("#editor", TextArea)
+                editor.load_text("")
+                self.current_file = str(file_path)
+                self._original_content = ""
+                self._has_unsaved_changes = False  # It's empty, so no changes yet
+                self.title = f"{PROGRAM_NAME} v{PROGRAM_VERSION} :: {file_path.name} (new)"
+                self.notify(f"New file: {file_path.name} (will be created on save)")
         except Exception as e:
             self.notify(f"Error loading file: {e}", severity="error")
 
